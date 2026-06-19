@@ -652,6 +652,7 @@ function Scenes({ project, selectedSceneId }: { project: ProjectDetail; selected
             segmentBySceneId={segmentBySceneId}
           />
           <SceneEditorCard
+            key={selectedScene.id}
             project={project}
             scene={selectedScene}
             segment={segmentBySceneId.get(selectedScene.id)}
@@ -710,9 +711,14 @@ function Writing({
             manualSegments={manualSegments}
           />
           {selectedSegment ? (
-            <DraftEditorCard project={project} segment={selectedSegment} scene={selectedScene} />
+            <DraftEditorCard
+              key={selectedSegment.id}
+              project={project}
+              segment={selectedSegment}
+              scene={selectedScene}
+            />
           ) : selectedScene ? (
-            <UnwrittenSceneCard project={project} scene={selectedScene} />
+            <UnwrittenSceneCard key={selectedScene.id} project={project} scene={selectedScene} />
           ) : null}
         </div>
       ) : null}
