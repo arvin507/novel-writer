@@ -32,10 +32,12 @@ export function JobWatcher({
   jobId,
   projectId,
   tab,
+  focusSceneId,
 }: {
   jobId?: string;
   projectId: string;
   tab: string;
+  focusSceneId?: string;
 }) {
   const router = useRouter();
   const [job, setJob] = useState<JobState | null>(null);
@@ -114,6 +116,7 @@ export function JobWatcher({
             <input type="hidden" name="projectId" value={projectId} />
             <input type="hidden" name="tab" value={tab} />
             <input type="hidden" name="jobId" value={jobId} />
+            {focusSceneId ? <input type="hidden" name="focusSceneId" value={focusSceneId} /> : null}
             <SubmitButton variant="outline" pendingText="重跑中">
               {isFailed ? "重跑失败任务" : "重新运行任务"}
             </SubmitButton>

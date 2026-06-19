@@ -4,8 +4,10 @@ import {
   BookOpenCheck,
   CheckCircle2,
   Download,
+  FileText,
   GitCompare,
   Info,
+  ListChecks,
   Play,
 } from "lucide-react";
 import {
@@ -82,6 +84,8 @@ async function getProject(id: string) {
 }
 
 type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProject>>>;
+type SceneCardItem = ProjectDetail["sceneCards"][number];
+type DraftSegmentItem = ProjectDetail["draftSegments"][number];
 
 export default async function ProjectPage({
   params,
@@ -94,6 +98,8 @@ export default async function ProjectPage({
     diff?: string;
     exportId?: string;
     error?: string;
+    sceneId?: string;
+    segmentId?: string;
   }>;
 }) {
   const { id } = await params;
@@ -174,15 +180,17 @@ export default async function ProjectPage({
         </div>
       ) : null}
 
-      <JobWatcher jobId={watchedJobId} projectId={project.id} tab={activeTab} />
+      <JobWatcher jobId={watchedJobId} projectId={project.id} tab={activeTab} focusSceneId={query.sceneId} />
 
       {activeTab === "overview" ? <Overview project={project} totalWords={totalWords} /> : null}
       {activeTab === "directions" ? <Directions project={project} /> : null}
       {activeTab === "hooks" ? <Hooks project={project} /> : null}
       {activeTab === "characters" ? <Characters project={project} /> : null}
       {activeTab === "outline" ? <Outline project={project} /> : null}
-      {activeTab === "scenes" ? <Scenes project={project} /> : null}
-      {activeTab === "writing" ? <Writing project={project} /> : null}
+      {activeTab === "scenes" ? <Scenes project={project} selectedSceneId={query.sceneId} /> : null}
+      {activeTab === "writing" ? (
+        <Writing project={project} selectedSceneId={query.sceneId} selectedSegmentId={query.segmentId} />
+      ) : null}
       {activeTab === "reviews" ? <Reviews project={project} /> : null}
       {activeTab === "versions" ? <Versions project={project} diffId={query.diff} /> : null}
       {activeTab === "export" ? <Export project={project} exportId={query.exportId} /> : null}
@@ -323,21 +331,25 @@ function WorkflowButton({
   type,
   tab,
   sceneCardId,
+  focusSceneId,
   children,
 }: {
   projectId: string;
   type: LocalJobType;
   tab: string;
   sceneCardId?: string;
+  focusSceneId?: string;
   children: React.ReactNode;
 }) {
   const meta = workflowMeta[type];
+  const targetSceneId = focusSceneId ?? sceneCardId;
   return (
     <form action={startWorkflowAction} title={`${meta.label}：${meta.description}`}>
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="type" value={type} />
       <input type="hidden" name="tab" value={tab} />
       {sceneCardId ? <input type="hidden" name="sceneCardId" value={sceneCardId} /> : null}
+      {targetSceneId ? <input type="hidden" name="focusSceneId" value={targetSceneId} /> : null}
       <SubmitButton pendingText="启动中" variant="secondary">
         <Play className="h-4 w-4" />
         {children}
@@ -616,74 +628,270 @@ function Outline({ project }: { project: ProjectDetail }) {
   );
 }
 
-function Scenes({ project }: { project: ProjectDetail }) {
+function Scenes({ project, selectedSceneId }: { project: ProjectDetail; selectedSceneId?: string }) {
+  const selectedScene =
+    project.sceneCards.find((scene) => scene.id === selectedSceneId) ?? project.sceneCards[0];
+  const segmentBySceneId = buildSegmentBySceneId(project.draftSegments);
+
   return (
     <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">场景卡片</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">场景卡片</h2>
+          <p className="mt-1 text-sm text-zinc-600">左侧选择场景，右侧编辑当前卡片。</p>
+        </div>
+        <Badge>{project.sceneCards.length} 张卡片</Badge>
+      </div>
       {project.sceneCards.length === 0 ? <Empty text="还没有场景卡。先生成人物与大纲。" /> : null}
-      {project.sceneCards.map((scene) => (
-        <Card key={scene.id}>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold">{scene.orderIndex}. {scene.title}</h3>
-              <p className="text-sm text-zinc-600">{scene.conflict}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge>{readableSceneStatus(scene.status)}</Badge>
-              <WorkflowButton projectId={project.id} type="write_scene" tab="writing" sceneCardId={scene.id}>
-                写这个场景
-              </WorkflowButton>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <form action={updateSceneCardAction} className="grid gap-3">
-              <input type="hidden" name="id" value={scene.id} />
-              <input type="hidden" name="projectId" value={project.id} />
-              <TwoCols>
-                <Field label="标题"><Input name="title" defaultValue={scene.title} /></Field>
-                <Field label="状态"><Input name="status" defaultValue={scene.status} /></Field>
-                <Field label="目标"><Textarea name="goal" defaultValue={scene.goal} /></Field>
-                <Field label="地点"><Textarea name="location" defaultValue={scene.location} /></Field>
-                <Field label="冲突"><Textarea name="conflict" defaultValue={scene.conflict} /></Field>
-                <Field label="信息增量"><Textarea name="informationGain" defaultValue={scene.informationGain} /></Field>
-                <Field label="情绪变化"><Textarea name="emotionalShift" defaultValue={scene.emotionalShift} /></Field>
-                <Field label="回收"><Textarea name="payoff" defaultValue={scene.payoff} /></Field>
-                <Field label="必须包含 JSON"><Textarea name="mustIncludeJson" defaultValue={scene.mustIncludeJson} /></Field>
-                <Field label="伏笔 JSON"><Textarea name="foreshadowingJson" defaultValue={scene.foreshadowingJson} /></Field>
-                <Field label="禁止 JSON"><Textarea name="forbiddenJson" defaultValue={scene.forbiddenJson} /></Field>
-              </TwoCols>
-              <SubmitButton variant="outline" pendingText="保存中">保存场景卡</SubmitButton>
-            </form>
-          </CardContent>
-        </Card>
-      ))}
+      {selectedScene ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <SceneDrawer
+            project={project}
+            tab="scenes"
+            selectedSceneId={selectedScene.id}
+            segmentBySceneId={segmentBySceneId}
+          />
+          <SceneEditorCard
+            project={project}
+            scene={selectedScene}
+            segment={segmentBySceneId.get(selectedScene.id)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function Writing({ project }: { project: ProjectDetail }) {
+function Writing({
+  project,
+  selectedSceneId,
+  selectedSegmentId,
+}: {
+  project: ProjectDetail;
+  selectedSceneId?: string;
+  selectedSegmentId?: string;
+}) {
   const orderedSegments = [...project.draftSegments].sort(
     (a, b) => (a.sceneCard?.orderIndex ?? 9999) - (b.sceneCard?.orderIndex ?? 9999),
   );
+  const segmentBySceneId = buildSegmentBySceneId(orderedSegments);
+  const manualSegments = orderedSegments.filter((segment) => !segment.sceneCardId);
+  const selectedManualSegment = manualSegments.find((segment) => segment.id === selectedSegmentId);
+  const selectedScene = selectedManualSegment
+    ? undefined
+    : project.sceneCards.find((scene) => scene.id === selectedSceneId) ?? project.sceneCards[0];
+  const selectedSegment =
+    selectedManualSegment ??
+    (selectedScene ? segmentBySceneId.get(selectedScene.id) : undefined) ??
+    (project.sceneCards.length === 0 ? orderedSegments[0] : undefined);
+  const activeSceneId = selectedScene?.id ?? selectedSegment?.sceneCardId ?? undefined;
+  const totalWords = project.draftSegments.reduce((sum, item) => sum + item.wordCount, 0);
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap justify-between gap-2">
-        <h2 className="text-lg font-semibold">正文写作</h2>
-        <Badge>全文 {project.draftSegments.reduce((sum, item) => sum + item.wordCount, 0)} 字</Badge>
+        <div>
+          <h2 className="text-lg font-semibold">正文写作</h2>
+          <p className="mt-1 text-sm text-zinc-600">左侧切换场景，右侧写作或查看正文。</p>
+        </div>
+        <Badge>全文 {totalWords} 字</Badge>
       </div>
-      {orderedSegments.length === 0 ? <Empty text="还没有正文。去场景卡片里选择一个场景生成。" /> : null}
-      {orderedSegments.map((segment) => (
-        <Card key={segment.id}>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold">{segment.title}</h3>
-              <p className="text-sm text-zinc-600">
-                {segment.sceneCard?.title ?? "手动段落"} / {segment.wordCount} 字 / {readableSceneStatus(segment.status)}
-              </p>
+      {project.sceneCards.length === 0 && orderedSegments.length === 0 ? (
+        <Empty text="还没有正文。去场景卡片里选择一个场景生成。" />
+      ) : null}
+      {project.sceneCards.length || orderedSegments.length ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <SceneDrawer
+            project={project}
+            tab="writing"
+            selectedSceneId={activeSceneId}
+            selectedSegmentId={selectedManualSegment?.id}
+            segmentBySceneId={segmentBySceneId}
+            manualSegments={manualSegments}
+          />
+          {selectedSegment ? (
+            <DraftEditorCard project={project} segment={selectedSegment} scene={selectedScene} />
+          ) : selectedScene ? (
+            <UnwrittenSceneCard project={project} scene={selectedScene} />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SceneDrawer({
+  project,
+  tab,
+  selectedSceneId,
+  selectedSegmentId,
+  segmentBySceneId,
+  manualSegments = [],
+}: {
+  project: ProjectDetail;
+  tab: "scenes" | "writing";
+  selectedSceneId?: string;
+  selectedSegmentId?: string;
+  segmentBySceneId: Map<string, DraftSegmentItem>;
+  manualSegments?: DraftSegmentItem[];
+}) {
+  return (
+    <aside className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm shadow-zinc-200/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <ListChecks className="h-4 w-4 shrink-0 text-zinc-600" />
+          <span className="font-medium text-zinc-950">场景抽屉</span>
+        </div>
+        <Badge>{project.sceneCards.length}</Badge>
+      </div>
+      <nav className="max-h-[380px] overflow-y-auto p-2 lg:max-h-[calc(100vh-10rem)]">
+        <div className="grid gap-1">
+          {project.sceneCards.map((scene) => {
+            const segment = segmentBySceneId.get(scene.id);
+            const selected = scene.id === selectedSceneId;
+            return (
+              <Link
+                key={scene.id}
+                href={projectTabHref(project.id, tab, { sceneId: scene.id })}
+                className={cn(
+                  "flex min-h-16 gap-3 rounded-md border px-3 py-2 text-left transition",
+                  selected
+                    ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
+                    : "border-transparent text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold",
+                    selected ? "bg-white text-zinc-950" : "bg-zinc-100 text-zinc-700",
+                  )}
+                >
+                  {scene.orderIndex}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{scene.title}</span>
+                  <span className={cn("mt-1 block truncate text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
+                    {segment ? `${segment.wordCount} 字` : "未写正文"} / {readableSceneStatus(scene.status)}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+        {manualSegments.length ? (
+          <div className="mt-4 border-t border-zinc-100 pt-3">
+            <div className="mb-2 px-2 text-xs font-medium text-zinc-500">未绑定场景的正文</div>
+            <div className="grid gap-1">
+              {manualSegments.map((segment) => {
+                const selected = segment.id === selectedSegmentId;
+                return (
+                  <Link
+                    key={segment.id}
+                    href={projectTabHref(project.id, "writing", { segmentId: segment.id })}
+                    className={cn(
+                      "flex min-h-14 items-center gap-3 rounded-md border px-3 py-2 transition",
+                      selected
+                        ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
+                        : "border-transparent text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
+                    )}
+                  >
+                    <FileText className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{segment.title}</span>
+                      <span className={cn("mt-1 block text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
+                        {segment.wordCount} 字 / {readableSceneStatus(segment.status)}
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
-            <CopyButton text={segment.content} />
-          </CardHeader>
-          <CardContent>
+          </div>
+        ) : null}
+      </nav>
+    </aside>
+  );
+}
+
+function SceneEditorCard({
+  project,
+  scene,
+  segment,
+}: {
+  project: ProjectDetail;
+  scene: SceneCardItem;
+  segment?: DraftSegmentItem;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-semibold">
+            {scene.orderIndex}. {scene.title}
+          </h3>
+          <p className="mt-1 text-sm text-zinc-600">{scene.conflict}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Badge>{readableSceneStatus(scene.status)}</Badge>
+          {segment ? (
+            <Link className={buttonVariants("outline")} href={projectTabHref(project.id, "writing", { sceneId: scene.id })}>
+              <FileText className="h-4 w-4" />
+              查看正文
+            </Link>
+          ) : null}
+          <WorkflowButton projectId={project.id} type="write_scene" tab="writing" sceneCardId={scene.id}>
+            写这个场景
+          </WorkflowButton>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <form action={updateSceneCardAction} className="grid gap-3">
+          <input type="hidden" name="id" value={scene.id} />
+          <input type="hidden" name="projectId" value={project.id} />
+          <TwoCols>
+            <Field label="标题"><Input name="title" defaultValue={scene.title} /></Field>
+            <Field label="状态"><Input name="status" defaultValue={scene.status} /></Field>
+            <Field label="目标"><Textarea name="goal" defaultValue={scene.goal} /></Field>
+            <Field label="地点"><Textarea name="location" defaultValue={scene.location} /></Field>
+            <Field label="冲突"><Textarea name="conflict" defaultValue={scene.conflict} /></Field>
+            <Field label="信息增量"><Textarea name="informationGain" defaultValue={scene.informationGain} /></Field>
+            <Field label="情绪变化"><Textarea name="emotionalShift" defaultValue={scene.emotionalShift} /></Field>
+            <Field label="回收"><Textarea name="payoff" defaultValue={scene.payoff} /></Field>
+            <Field label="必须包含 JSON"><Textarea name="mustIncludeJson" defaultValue={scene.mustIncludeJson} /></Field>
+            <Field label="伏笔 JSON"><Textarea name="foreshadowingJson" defaultValue={scene.foreshadowingJson} /></Field>
+            <Field label="禁止 JSON"><Textarea name="forbiddenJson" defaultValue={scene.forbiddenJson} /></Field>
+          </TwoCols>
+          <SubmitButton variant="outline" pendingText="保存中">保存场景卡</SubmitButton>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DraftEditorCard({
+  project,
+  segment,
+  scene,
+}: {
+  project: ProjectDetail;
+  segment: DraftSegmentItem;
+  scene?: SceneCardItem;
+}) {
+  const referenceScene = scene ?? segment.sceneCard ?? undefined;
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-semibold">{segment.title}</h3>
+          <p className="text-sm text-zinc-600">
+            {segment.sceneCard?.title ?? "手动段落"} / {segment.wordCount} 字 / {readableSceneStatus(segment.status)}
+          </p>
+        </div>
+        <CopyButton text={segment.content} />
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div>
             <form action={updateDraftSegmentAction} className="grid gap-3">
               <input type="hidden" name="id" value={segment.id} />
               <input type="hidden" name="projectId" value={project.id} />
@@ -695,9 +903,57 @@ function Writing({ project }: { project: ProjectDetail }) {
               <SubmitButton variant="outline" pendingText="保存中">保存正文版本</SubmitButton>
             </form>
             <SegmentChiefPanel project={project} segment={segment} />
-          </CardContent>
-        </Card>
-      ))}
+          </div>
+          {referenceScene ? <SceneReferencePanel scene={referenceScene} /> : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function UnwrittenSceneCard({ project, scene }: { project: ProjectDetail; scene: SceneCardItem }) {
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate font-semibold">
+            {scene.orderIndex}. {scene.title}
+          </h3>
+          <p className="mt-1 text-sm text-zinc-600">当前场景还没有正文。</p>
+        </div>
+        <WorkflowButton projectId={project.id} type="write_scene" tab="writing" sceneCardId={scene.id}>
+          写这个场景
+        </WorkflowButton>
+      </CardHeader>
+      <CardContent>
+        <SceneReferencePanel scene={scene} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SceneReferencePanel({ scene }: { scene: SceneCardItem }) {
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+      <div className="mb-3 flex items-center gap-2 font-medium text-zinc-950">
+        <BookOpenCheck className="h-4 w-4 text-zinc-600" />
+        当前场景卡
+      </div>
+      <div className="grid gap-3 text-sm leading-6 md:grid-cols-2">
+        <MiniRow label="目标" value={scene.goal} />
+        <MiniRow label="地点" value={scene.location} />
+        <MiniRow label="冲突" value={scene.conflict} />
+        <MiniRow label="信息增量" value={scene.informationGain} />
+        <MiniRow label="情绪变化" value={scene.emotionalShift} />
+        <MiniRow label="回收" value={scene.payoff} />
+      </div>
+      {scene.mustIncludeJson !== "[]" || scene.foreshadowingJson !== "[]" || scene.forbiddenJson !== "[]" ? (
+        <div className="mt-3 grid gap-2 text-xs leading-5 text-zinc-600 md:grid-cols-3">
+          <MiniBlock label="必须包含" value={scene.mustIncludeJson} />
+          <MiniBlock label="伏笔" value={scene.foreshadowingJson} />
+          <MiniBlock label="禁止" value={scene.forbiddenJson} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1033,6 +1289,45 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="min-w-0">{value}</span>
     </div>
   );
+}
+
+function MiniRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="grid gap-1">
+      <span className="text-xs text-zinc-500">{label}</span>
+      <span className="min-w-0 whitespace-pre-wrap break-words text-zinc-800">{value || "-"}</span>
+    </div>
+  );
+}
+
+function MiniBlock({ label, value }: { label: string; value: string }) {
+  if (!value || value === "[]" || value === "{}") return null;
+  return (
+    <div className="rounded-md border border-zinc-200 bg-white p-3">
+      <div className="mb-1 font-medium text-zinc-800">{label}</div>
+      <div className="max-h-24 overflow-auto whitespace-pre-wrap break-words">{value}</div>
+    </div>
+  );
+}
+
+function buildSegmentBySceneId(segments: DraftSegmentItem[]) {
+  const bySceneId = new Map<string, DraftSegmentItem>();
+  for (const segment of segments) {
+    if (segment.sceneCardId) bySceneId.set(segment.sceneCardId, segment);
+  }
+  return bySceneId;
+}
+
+function projectTabHref(
+  projectId: string,
+  tab: string,
+  params: Record<string, string | undefined> = {},
+) {
+  const search = new URLSearchParams({ tab });
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value);
+  }
+  return `/projects/${projectId}?${search.toString()}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
