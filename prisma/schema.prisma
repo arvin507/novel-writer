@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id                  String    @id @default(cuid())
+  title               String
+  genre               String
+  keywords            String
+  targetWordCount     Int
+  pov                 String
+  endingPreference    String
+  emotionalTone       String
+  originalIdea        String
+  forbiddenItems      String    @default("")
+  currentStage        String    @default("idea")
+  selectedDirectionId String?
+  previousSummary     String    @default("")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  archivedAt          DateTime?
+
+  storyDirections StoryDirection[]
+  hookPackages    HookPackage[]
+  characters      Character[]
+  outlines        Outline[]
+  sceneCards      SceneCard[]
+  draftSegments   DraftSegment[]
+  agentRuns       AgentRun[]
+  reviewReports   ReviewReport[]
+  storyBible      StoryBible?
+  foreshadowings  Foreshadowing[]
+  twists          Twist[]
+  exportFiles     ExportFile[]
+  localJobs       LocalJob[]
+}
+
+model LLMSettings {
+  id              String   @id @default(cuid())
+  providerName    String   @default("OpenAI Compatible")
+  apiMode         String   @default("chat_completions")
+  reasoningEffort String   @default("high")
+  baseUrl         String
+  apiKeyEncrypted String
+  model           String
+  temperature     Float    @default(0.7)
+  maxTokens       Int      @default(4000)
+  timeout         Int      @default(180000)
+  streamEnabled   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model StoryDirection {
+  id                   String   @id @default(cuid())
+  projectId            String
+  title                String
+  logline              String
+  openingHook          String
+  coreConflict         String
+  protagonistDilemma   String
+  mainTwist            String
+  emotionalValue       String
+  targetReaders        String
+  commercialScore      Int
+  risk                 String
+  recommendationReason String
+  readerFeedbackJson   String   @default("{}")
+  logicFeedbackJson    String   @default("{}")
+  chiefDecisionJson    String   @default("{}")
+  selected             Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model HookPackage {
+  id                 String   @id @default(cuid())
+  projectId          String
+  titlesJson         String
+  loglinesJson       String
+  openingHooksJson   String
+  openingSamplesJson String
+  readerReviewJson   String   @default("{}")
+  emotionReviewJson  String   @default("{}")
+  chiefDecisionJson  String   @default("{}")
+  selectedTitle      String?
+  selectedLogline    String?
+  selectedHook       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Character {
+  id                        String   @id @default(cuid())
+  projectId                 String
+  name                      String
+  role                      String
+  identity                  String
+  surfaceGoal               String
+  trueDesire                String
+  weakness                  String
+  secret                    String
+  relationshipToProtagonist String
+  plotFunction              String
+  turningPoint              String
+  ending                    String
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Outline {
+  id                 String   @id @default(cuid())
+  projectId          String
+  storyArc           String
+  outlineJson        String
+  conflictEscalation String
+  emotionalCurveJson String
+  rawJson            String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model SceneCard {
+  id                String   @id @default(cuid())
+  projectId         String
+  orderIndex        Int
+  status            String   @default("unwritten")
+  title             String
+  goal              String
+  charactersJson    String
+  location          String
+  conflict          String
+  informationGain   String
+  emotionalShift    String
+  mustIncludeJson   String
+  foreshadowingJson String
+  payoff            String
+  forbiddenJson     String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  draftSegments DraftSegment[]
+}
+
+model DraftSegment {
+  id                String   @id @default(cuid())
+  projectId         String
+  sceneCardId       String?
+  title             String
+  content           String
+  status            String   @default("draft")
+  wordCount         Int      @default(0)
+  reviewJson        String   @default("{}")
+  chiefDecisionJson String   @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneCard SceneCard?     @relation(fields: [sceneCardId], references: [id], onDelete: SetNull)
+  versions  DraftVersion[]
+}
+
+model DraftVersion {
+  id             String   @id @default(cuid())
+  segmentId      String
+  content        String
+  reason         String
+  createdByAgent String
+  createdAt      DateTime @default(now())
+
+  segment DraftSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+}
+
+model AgentRun {
+  id           String   @id @default(cuid())
+  projectId    String?
+  workflowType String
+  agentName    String
+  inputJson    String
+  outputJson   String?
+  rawOutput    String?
+  status       String
+  error        String?
+  model        String?
+  durationMs   Int?
+  tokenUsage   String?
+  createdAt    DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ReviewReport {
+  id           String   @id @default(cuid())
+  projectId    String
+  workflowType String
+  targetType   String
+  targetId     String?
+  scoresJson   String
+  summary      String
+  detailsJson  String
+  createdAt    DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model StoryBible {
+  id                    String   @id @default(cuid())
+  projectId             String   @unique
+  previousSummary       String   @default("")
+  happenedEvents        String   @default("[]")
+  revealedSecrets       String   @default("[]")
+  unrevealedSecrets     String   @default("[]")
+  openForeshadowing     String   @default("[]")
+  resolvedForeshadowing String   @default("[]")
+  characterStates       String   @default("{}")
+  timeline              String   @default("[]")
+  rawJson               String   @default("{}")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Foreshadowing {
+  id          String   @id @default(cuid())
+  projectId   String
+  clue        String
+  setupScene  String
+  payoffScene String
+  status      String   @default("open")
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Twist {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  setup     String
+  reveal    String
+  impact    String
+  status    String   @default("planned")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ExportFile {
+  id        String   @id @default(cuid())
+  projectId String
+  type      String
+  fileName  String
+  path      String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model LocalJob {
+  id          String    @id @default(cuid())
+  projectId   String?
+  type        String
+  status      String    @default("pending")
+  payloadJson String
+  resultJson  String?
+  error       String?
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}

@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 本地单机版短篇故事创作工作台
 
-## Getting Started
+一个本地 Web 工具：用浏览器访问 `localhost`，通过第三方 OpenAI-compatible Chat Completions API 辅助创作短篇故事。
 
-First, run the development server:
+## 启动
 
 ```bash
+npm install
+npm run setup
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开：
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Windows 和 macOS 都使用同一组 npm 命令。
 
-## Learn More
+## 配置
 
-To learn more about Next.js, take a look at the following resources:
+复制示例环境文件：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cp .env.example .env
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Windows PowerShell 可以用：
 
-## Deploy on Vercel
+```powershell
+Copy-Item .env.example .env
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+也可以直接在 `/settings` 页面配置：
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Provider 名称
+- API 模式：`chat_completions` 使用 `/v1/chat/completions`，`responses` 使用 `/v1/responses`
+- 推理强度：`reasoning.effort`，例如 `high` 接近 Codex 复杂任务模式
+- Responses 流式返回：启用后使用 `/v1/responses` 的 SSE 流式输出，长任务更不容易被网关空等超时切断
+- Base URL，例如 `https://api.example.com` 或 `https://api.example.com/v1`
+- API Key
+- 模型名称
+- temperature
+- max tokens
+- timeout
+
+API Key 只保存在本地 SQLite，不会暴露给前端。
+
+## 数据与导出
+
+- SQLite 数据库：`local.db`
+- 导出目录：`exports/`
+- 支持导出 Markdown、TXT、DOCX、设定集、大纲场景卡、投稿自检报告
+
+## 常用命令
+
+```bash
+npm run dev        # 本地开发服务
+npm run build      # 生产构建检查
+npm run lint       # 代码检查
+npm run typecheck  # 类型检查
+npm test           # 基础自检
+npm run db:push    # 初始化本地 SQLite 表
+```
