@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/db/prisma";
 import { parseJsonFromModel } from "@/lib/json";
+import { buildPlatformInstruction } from "@/lib/platforms";
 import { stringifyJson } from "@/lib/utils";
 import { callChatCompletion, type ChatMessage, type LLMConfig } from "./llmClient";
 
@@ -23,8 +24,12 @@ export async function runAgent<TSchema extends z.ZodTypeAny>({
   schema,
   llmOverrides,
 }: RunAgentInput<TSchema>): Promise<z.infer<TSchema>> {
+  const platformInstruction = await getProjectPlatformInstruction(projectId);
   let messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
+    {
+      role: "system",
+      content: platformInstruction ? `${systemPrompt}\n\n${platformInstruction}` : systemPrompt,
+    },
     { role: "user", content: userPrompt },
   ];
   let lastError = "";
@@ -95,4 +100,17 @@ export async function runAgent<TSchema extends z.ZodTypeAny>({
   }
 
   throw new Error(`${agentName} 输出解析失败：${lastError}`);
+}
+
+async function getProjectPlatformInstruction(projectId?: string) {
+  if (!projectId) return "";
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      targetPlatform: true,
+      platformRequirementOverride: true,
+      targetWordCount: true,
+    },
+  });
+  return project ? buildPlatformInstruction(project) : "";
 }

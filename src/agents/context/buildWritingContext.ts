@@ -1,4 +1,5 @@
 import { prisma } from "@/db/prisma";
+import { buildPlatformInstruction, getPlatformProfile } from "@/lib/platforms";
 import { safeJsonParse, stringifyJson, truncateText } from "@/lib/utils";
 import { writingRules } from "../prompts";
 
@@ -37,6 +38,7 @@ export async function buildWritingContext(projectId: string, sceneCardId: string
   const orderedDraftSegments = project.draftSegments
     .filter((segment) => segment.sceneCard)
     .sort((a, b) => (a.sceneCard?.orderIndex ?? 0) - (b.sceneCard?.orderIndex ?? 0));
+  const platformProfile = getPlatformProfile(project.targetPlatform);
 
   const context = {
     projectBrief: {
@@ -44,12 +46,15 @@ export async function buildWritingContext(projectId: string, sceneCardId: string
       genre: project.genre,
       keywords: project.keywords,
       targetWordCount: project.targetWordCount,
+      targetPlatform: platformProfile.label,
+      platformRequirementOverride: project.platformRequirementOverride,
       pov: project.pov,
       endingPreference: project.endingPreference,
       emotionalTone: project.emotionalTone,
       originalIdea: project.originalIdea,
       forbiddenItems: project.forbiddenItems,
     },
+    platformInstruction: buildPlatformInstruction(project),
     selectedStoryDirection: selectedDirection
       ? {
           title: selectedDirection.title,

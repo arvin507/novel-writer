@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/db/prisma";
+import { DEFAULT_PLATFORM_KEY, platformProfiles } from "@/lib/platforms";
 
 const selectClassName = "h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm";
 
@@ -168,10 +169,22 @@ export default async function NewProjectPage({
               <Field label="目标字数">
                 <Input name="targetWordCount" type="number" list="target-word-count-presets" defaultValue={8000} />
                 <datalist id="target-word-count-presets">
-                  {[3000, 5000, 8000, 12000, 15000, 20000, 30000].map((option) => (
+                  {[6000, 8000, 10000, 12000, 15000, 20000, 30000].map((option) => (
                     <option key={option} value={option} />
                   ))}
                 </datalist>
+              </Field>
+              <Field label="目标平台">
+                <select name="targetPlatform" className={selectClassName} defaultValue={DEFAULT_PLATFORM_KEY}>
+                  {platformProfiles.map((profile) => (
+                    <option key={profile.key} value={profile.key}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-5 text-zinc-500">
+                  当前只按短篇生成；平台格式和风格要求会自动传给每个 Agent。
+                </p>
               </Field>
               <Field label="叙事视角">
                 <select name="pov" className={selectClassName} defaultValue="第一人称">
@@ -265,6 +278,12 @@ export default async function NewProjectPage({
               <Textarea
                 name="originalIdea"
                 placeholder="一句话也可以，例如：我在婚礼当天发现未婚夫给我的请柬是假的。"
+              />
+            </Field>
+            <Field label="平台补充要求">
+              <Textarea
+                name="platformRequirementOverride"
+                placeholder="例如：知乎体必须导语 + 1、2、3、4 分节；分节不要小标题；结尾必须反转清算。"
               />
             </Field>
             <Field label="禁止事项">

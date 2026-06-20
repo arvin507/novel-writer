@@ -10,6 +10,8 @@ const statements = [
     genre TEXT NOT NULL,
     keywords TEXT NOT NULL,
     targetWordCount INTEGER NOT NULL,
+    targetPlatform TEXT NOT NULL DEFAULT 'zhihu_yanxuan',
+    platformRequirementOverride TEXT NOT NULL DEFAULT '',
     pov TEXT NOT NULL,
     endingPreference TEXT NOT NULL,
     emotionalTone TEXT NOT NULL,
@@ -265,6 +267,8 @@ async function main() {
   }
   await ensureColumn("LLMSettings", "apiMode", "TEXT NOT NULL DEFAULT 'chat_completions'");
   await ensureColumn("LLMSettings", "reasoningEffort", "TEXT NOT NULL DEFAULT 'high'");
+  await ensureColumn("Project", "targetPlatform", "TEXT NOT NULL DEFAULT 'zhihu_yanxuan'");
+  await ensureColumn("Project", "platformRequirementOverride", "TEXT NOT NULL DEFAULT ''");
   console.log("SQLite tables are ready.");
 }
 

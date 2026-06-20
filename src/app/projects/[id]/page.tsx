@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/db/prisma";
 import { buildWordDiff } from "@/lib/diff/textDiff";
 import type { LocalJobType } from "@/lib/jobs/runner";
+import { DEFAULT_PLATFORM_KEY, getPlatformProfile, platformProfiles } from "@/lib/platforms";
 import { scoreHints } from "@/lib/scoring/storyScoring";
 import {
   projectMilestones,
@@ -66,6 +67,8 @@ const tabs = [
   ["export", "导出"],
   ["settings", "设置"],
 ] as const;
+
+const selectClassName = "h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm";
 
 const tabGroups = [
   { label: "规划", items: [tabs[0], tabs[1], tabs[2], tabs[3], tabs[4]] },
@@ -130,6 +133,7 @@ export default async function ProjectPage({
   const fallbackJobId = latestJob && latestJob.status !== "success" ? latestJob.id : undefined;
   const watchedJobId = query.jobId ?? fallbackJobId;
   const totalWords = project.draftSegments.reduce((sum, item) => sum + item.wordCount, 0);
+  const platformProfile = getPlatformProfile(project.targetPlatform);
   const writtenScenes = project.sceneCards.filter((scene) =>
     project.draftSegments.some((segment) => segment.sceneCardId === scene.id),
   ).length;
@@ -154,6 +158,7 @@ export default async function ProjectPage({
               </Link>
               <span className="text-zinc-300">/</span>
               <Badge className="border-teal-200 bg-teal-50 text-teal-900">{readableStage(project.currentStage)}</Badge>
+              <Badge className="border-sky-200 bg-sky-50 text-sky-900">{platformProfile.shortLabel}</Badge>
               <Badge>{project.genre}</Badge>
             </div>
             <h1 className="truncate text-xl font-semibold text-zinc-950 sm:text-2xl">{project.title}</h1>
@@ -443,6 +448,7 @@ function Overview({ project, totalWords }: { project: ProjectDetail; totalWords:
     {},
   );
   const chiefAction = readableChiefAction(chiefOutput.nextAction);
+  const platformProfile = getPlatformProfile(project.targetPlatform);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -471,6 +477,7 @@ function Overview({ project, totalWords }: { project: ProjectDetail; totalWords:
           <h2 className="font-semibold">创作进度</h2>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
+          <Row label="平台" value={platformProfile.label} />
           <Row label="类型" value={project.genre} />
           <Row label="关键词" value={project.keywords || "-"} />
           <Row label="叙事视角" value={project.pov} />
@@ -1600,6 +1607,7 @@ function Export({ project, exportId }: { project: ProjectDetail; exportId?: stri
 
 function ProjectSettings({ project }: { project: ProjectDetail }) {
   const bible = project.storyBible;
+  const platformProfile = getPlatformProfile(project.targetPlatform);
   return (
     <div className="grid gap-4">
       <Card>
@@ -1612,11 +1620,35 @@ function ProjectSettings({ project }: { project: ProjectDetail }) {
               <Field label="类型"><Input name="genre" defaultValue={project.genre} /></Field>
               <Field label="关键词"><Input name="keywords" defaultValue={project.keywords} /></Field>
               <Field label="目标字数"><Input name="targetWordCount" type="number" defaultValue={project.targetWordCount} /></Field>
+              <Field label="目标平台">
+                <select
+                  name="targetPlatform"
+                  className={selectClassName}
+                  defaultValue={project.targetPlatform || DEFAULT_PLATFORM_KEY}
+                >
+                  {platformProfiles.map((profile) => (
+                    <option key={profile.key} value={profile.key}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="叙事视角"><Input name="pov" defaultValue={project.pov} /></Field>
               <Field label="结局倾向"><Input name="endingPreference" defaultValue={project.endingPreference} /></Field>
               <Field label="情绪基调"><Input name="emotionalTone" defaultValue={project.emotionalTone} /></Field>
             </TwoCols>
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-950">
+              <div className="font-medium">{platformProfile.label}</div>
+              <p className="mt-1 text-sky-800">{platformProfile.summary}</p>
+            </div>
             <Field label="原始灵感"><Textarea name="originalIdea" defaultValue={project.originalIdea} /></Field>
+            <Field label="平台补充要求">
+              <Textarea
+                name="platformRequirementOverride"
+                defaultValue={project.platformRequirementOverride}
+                placeholder="例如：知乎体必须导语 + 1、2、3、4 分节；分节不要小标题；结尾必须反转清算。"
+              />
+            </Field>
             <Field label="禁止事项"><Textarea name="forbiddenItems" defaultValue={project.forbiddenItems} /></Field>
             <SubmitButton variant="outline" pendingText="保存中">保存项目设置</SubmitButton>
           </form>

@@ -8,22 +8,24 @@ datasource db {
 }
 
 model Project {
-  id                  String    @id @default(cuid())
-  title               String
-  genre               String
-  keywords            String
-  targetWordCount     Int
-  pov                 String
-  endingPreference    String
-  emotionalTone       String
-  originalIdea        String
-  forbiddenItems      String    @default("")
-  currentStage        String    @default("idea")
-  selectedDirectionId String?
-  previousSummary     String    @default("")
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  archivedAt          DateTime?
+  id                          String    @id @default(cuid())
+  title                       String
+  genre                       String
+  keywords                    String
+  targetWordCount             Int
+  targetPlatform              String    @default("zhihu_yanxuan")
+  platformRequirementOverride String    @default("")
+  pov                         String
+  endingPreference            String
+  emotionalTone               String
+  originalIdea                String
+  forbiddenItems              String    @default("")
+  currentStage                String    @default("idea")
+  selectedDirectionId         String?
+  previousSummary             String    @default("")
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+  archivedAt                  DateTime?
 
   storyDirections StoryDirection[]
   hookPackages    HookPackage[]

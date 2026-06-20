@@ -4,13 +4,19 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/db/prisma";
+import { DEFAULT_PLATFORM_KEY, isSupportedPlatform } from "@/lib/platforms";
 import { countCjkWords, stringifyJson } from "@/lib/utils";
 
 const projectSchema = z.object({
   title: z.string().trim().optional().default(""),
   genre: z.string().trim().min(1, "故事类型必填"),
   keywords: z.string().default(""),
-  targetWordCount: z.coerce.number().min(1000).default(8000),
+  targetWordCount: z.coerce.number().min(6000, "短篇目标字数至少 6000 字").default(8000),
+  targetPlatform: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value.trim() : DEFAULT_PLATFORM_KEY),
+    z.string().refine(isSupportedPlatform, "目标平台无效"),
+  ),
+  platformRequirementOverride: z.string().trim().default(""),
   pov: z.string().trim().default("第一人称"),
   endingPreference: z.string().trim().default("反转后释然"),
   emotionalTone: z.string().trim().default("强冲突"),
@@ -66,6 +72,8 @@ export async function createProjectAction(formData: FormData) {
       genre: parsed.genre,
       keywords: enrichedKeywords,
       targetWordCount: parsed.targetWordCount,
+      targetPlatform: parsed.targetPlatform,
+      platformRequirementOverride: parsed.platformRequirementOverride,
       pov: parsed.pov,
       endingPreference: parsed.endingPreference,
       emotionalTone: parsed.emotionalTone,
@@ -104,6 +112,8 @@ export async function updateProjectAction(formData: FormData) {
       genre: parsed.genre,
       keywords: parsed.keywords,
       targetWordCount: parsed.targetWordCount,
+      targetPlatform: parsed.targetPlatform,
+      platformRequirementOverride: parsed.platformRequirementOverride,
       pov: parsed.pov,
       endingPreference: parsed.endingPreference,
       emotionalTone: parsed.emotionalTone,

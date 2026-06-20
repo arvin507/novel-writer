@@ -1,4 +1,5 @@
 import { prisma } from "@/db/prisma";
+import { buildPlatformInstruction, getPlatformProfile } from "@/lib/platforms";
 import { stringifyJson } from "@/lib/utils";
 
 export async function getProjectOrThrow(projectId: string) {
@@ -10,11 +11,15 @@ export async function getProjectOrThrow(projectId: string) {
 }
 
 export function projectBrief(project: Awaited<ReturnType<typeof getProjectOrThrow>>) {
+  const platformProfile = getPlatformProfile(project.targetPlatform);
   return stringifyJson({
     title: project.title,
     genre: project.genre,
     keywords: project.keywords,
     targetWordCount: project.targetWordCount,
+    targetPlatform: platformProfile.label,
+    platformRequirementOverride: project.platformRequirementOverride,
+    platformInstruction: buildPlatformInstruction(project),
     pov: project.pov,
     endingPreference: project.endingPreference,
     emotionalTone: project.emotionalTone,

@@ -1,5 +1,6 @@
 import { prisma } from "../src/db/prisma";
 import { topicPlannerSchema } from "../src/agents/schemas";
+import { buildPlatformInstruction } from "../src/lib/platforms";
 import { scoreHints } from "../src/lib/scoring/storyScoring";
 
 async function main() {
@@ -59,12 +60,22 @@ async function main() {
     throw new Error("评分提示数量不正确。");
   }
 
+  const zhihuInstruction = buildPlatformInstruction({
+    targetPlatform: "zhihu_yanxuan",
+    targetWordCount: 8000,
+  });
+  if (!zhihuInstruction.includes("导语 + 数字分节") || !zhihuInstruction.includes("不要写小标题")) {
+    throw new Error("知乎平台格式要求缺失。");
+  }
+
   const project = await prisma.project.create({
     data: {
       title: "smoke-test",
       genre: "测试",
       keywords: "test",
-      targetWordCount: 3000,
+      targetWordCount: 8000,
+      targetPlatform: "fanqie_short_story",
+      platformRequirementOverride: "测试补充要求",
       pov: "第一人称",
       endingPreference: "反转",
       emotionalTone: "紧张",

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { prisma } from "@/db/prisma";
+import { buildPlatformInstruction, getPlatformProfile } from "@/lib/platforms";
 import { safeJsonParse, slugifyFileName, stringifyJson } from "@/lib/utils";
 
 export type ExportType =
@@ -108,11 +109,13 @@ async function buildDraftDocx(project: ExportProject) {
 function buildStoryBibleMarkdown(project: ExportProject) {
   const hookPackage = project.hookPackages[0];
   const bible = project.storyBible;
+  const platformProfile = getPlatformProfile(project.targetPlatform);
 
   return [
     `# ${project.title} 设定集`,
     "",
     "## 项目简报",
+    `- 目标平台：${platformProfile.label}`,
     `- 类型：${project.genre}`,
     `- 关键词：${project.keywords}`,
     `- 目标字数：${project.targetWordCount}`,
@@ -171,6 +174,9 @@ function buildOutlineMarkdown(project: ExportProject) {
 function buildSubmissionReportMarkdown(project: ExportProject) {
   return [
     `# ${project.title} 投稿自检报告`,
+    "",
+    "## 平台要求",
+    buildPlatformInstruction(project),
     "",
     ...project.reviewReports.map(
       (report) =>
