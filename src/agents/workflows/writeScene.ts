@@ -19,8 +19,12 @@ import {
 } from "../schemas";
 import { saveReviewReport } from "./helpers";
 
-export async function writeScene(projectId: string, sceneCardId: string) {
-  const workflowType = "write_scene";
+export async function writeScene(
+  projectId: string,
+  sceneCardId: string,
+  workflowType: "write_scene" | "revise_scene" = "write_scene",
+) {
+  const isRevision = workflowType === "revise_scene";
   const sceneCard = await prisma.sceneCard.update({
     where: { id: sceneCardId },
     data: { status: "generating" },
@@ -33,7 +37,9 @@ export async function writeScene(projectId: string, sceneCardId: string) {
     workflowType,
     agentName: "DraftWriterAgent",
     systemPrompt: DraftWriterAgentPrompt,
-    userPrompt: `请根据以下上下文写当前场景正文：\n${context}`,
+    userPrompt: isRevision
+      ? `请根据上下文中的 currentDraft 和 currentDraftChiefDecision，按主编结论修订当前场景正文。保留可用段落，只解决主编指出的问题，不要从零另写一版。\n${context}`
+      : `请根据以下上下文写当前场景正文：\n${context}`,
     schema: draftWriterSchema,
   });
 
@@ -121,7 +127,11 @@ export async function writeScene(projectId: string, sceneCardId: string) {
     data: {
       segmentId: segment.id,
       content: finalContent,
-      reason: chiefOutput.nextAction === "rewrite" ? "AI 生成后按主编意见改写" : "AI 生成正文",
+      reason: isRevision
+        ? "按主编结论修订正文"
+        : chiefOutput.nextAction === "rewrite"
+          ? "AI 生成后按主编意见改写"
+          : "AI 生成正文",
       createdByAgent: chiefOutput.nextAction === "rewrite" ? "RewriteAgent" : "DraftWriterAgent",
     },
   });

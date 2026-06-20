@@ -105,6 +105,16 @@ type StoryDirectionItem = ProjectDetail["storyDirections"][number];
 type CharacterItem = ProjectDetail["characters"][number];
 type SceneCardItem = ProjectDetail["sceneCards"][number];
 type DraftSegmentItem = ProjectDetail["draftSegments"][number];
+type ChiefDecision = {
+  overallScore?: number;
+  summary?: string;
+  coreProblems?: string[];
+  acceptedSuggestions?: string[];
+  rejectedSuggestions?: string[];
+  rewriteInstructions?: string[];
+  nextAction?: string;
+  reason?: string;
+};
 
 export default async function ProjectPage({
   params,
@@ -439,6 +449,56 @@ function WorkflowCard({
   );
 }
 
+function ChiefDecisionPanel({
+  title,
+  chief,
+  action,
+}: {
+  title: string;
+  chief: ChiefDecision;
+  action?: React.ReactNode;
+}) {
+  if (!chief.summary && !chief.nextAction) return null;
+
+  const chiefAction = readableChiefAction(chief.nextAction);
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-zinc-50/90 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <BookOpenCheck className="h-4 w-4 text-zinc-600" />
+            <span className="font-medium text-zinc-950">{title}</span>
+            <Badge className={chiefAction.tone}>下一步：{chiefAction.label}</Badge>
+            {chief.overallScore !== undefined ? <Badge>评分：{chief.overallScore}</Badge> : null}
+          </div>
+          {chief.summary ? <p className="text-sm leading-6 text-zinc-600">{chief.summary}</p> : null}
+          <div className="mt-3 grid gap-3 text-sm leading-6 md:grid-cols-2">
+            <List title="核心问题" items={chief.coreProblems ?? []} />
+            <List title="改写指令" items={chief.rewriteInstructions ?? []} />
+          </div>
+          {chief.reason ? <p className="mt-2 text-xs leading-5 text-zinc-500">原因：{chief.reason}</p> : null}
+        </div>
+        {action ? <div className="flex shrink-0 flex-wrap gap-2">{action}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function canReviseFromChief(chief?: ChiefDecision) {
+  if (!chief) return false;
+  if (chief.nextAction && chief.nextAction !== "approve") return true;
+  return Boolean(chief.rewriteInstructions?.length || chief.coreProblems?.length);
+}
+
+function latestChiefFromReports(project: ProjectDetail, workflowTypes: string[]) {
+  const report = project.reviewReports.find((item) => workflowTypes.includes(item.workflowType));
+  const details = safeJsonParse<{ chiefOutput?: ChiefDecision; chief?: ChiefDecision }>(
+    report?.detailsJson,
+    {},
+  );
+  return { report, chief: details.chiefOutput ?? details.chief ?? {} };
+}
+
 function Overview({ project, totalWords }: { project: ProjectDetail; totalWords: number }) {
   const latestChief = project.agentRuns.find(
     (run) => run.agentName === "ChiefEditorAgent" && run.status === "success",
@@ -686,6 +746,8 @@ function StoryDirectionEditorCard({
 
 function Hooks({ project }: { project: ProjectDetail }) {
   const hook = project.hookPackages[0];
+  const chief = safeJsonParse<ChiefDecision>(hook?.chiefDecisionJson, {});
+  const canRevise = hook && canReviseFromChief(chief);
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap justify-between gap-2">
@@ -697,26 +759,39 @@ function Hooks({ project }: { project: ProjectDetail }) {
       {!hook ? (
         <Empty text="还没有标题钩子包。" />
       ) : (
-        <Card>
-          <CardContent>
-            <form action={updateHookPackageAction} className="grid gap-4">
-              <input type="hidden" name="id" value={hook.id} />
-              <input type="hidden" name="projectId" value={project.id} />
-              <TwoCols>
-                <Field label="选定标题"><Input name="selectedTitle" defaultValue={hook.selectedTitle ?? ""} /></Field>
-                <Field label="选定简介"><Input name="selectedLogline" defaultValue={hook.selectedLogline ?? ""} /></Field>
-              </TwoCols>
-              <Field label="选定开篇钩子"><Textarea name="selectedHook" defaultValue={hook.selectedHook ?? ""} /></Field>
-              <TwoCols>
-                <Field label="标题候选 JSON"><Textarea name="titlesJson" defaultValue={hook.titlesJson} /></Field>
-                <Field label="简介候选 JSON"><Textarea name="loglinesJson" defaultValue={hook.loglinesJson} /></Field>
-                <Field label="钩子候选 JSON"><Textarea name="openingHooksJson" defaultValue={hook.openingHooksJson} /></Field>
-                <Field label="开篇前三段 JSON"><Textarea name="openingSamplesJson" defaultValue={hook.openingSamplesJson} /></Field>
-              </TwoCols>
-              <SubmitButton variant="outline" pendingText="保存中">保存钩子包</SubmitButton>
-            </form>
-          </CardContent>
-        </Card>
+        <>
+          <ChiefDecisionPanel
+            title="钩子主编结论"
+            chief={chief}
+            action={
+              canRevise ? (
+                <WorkflowButton projectId={project.id} type="revise_hooks" tab="hooks">
+                  按结论修订钩子
+                </WorkflowButton>
+              ) : null
+            }
+          />
+          <Card>
+            <CardContent>
+              <form action={updateHookPackageAction} className="grid gap-4">
+                <input type="hidden" name="id" value={hook.id} />
+                <input type="hidden" name="projectId" value={project.id} />
+                <TwoCols>
+                  <Field label="选定标题"><Input name="selectedTitle" defaultValue={hook.selectedTitle ?? ""} /></Field>
+                  <Field label="选定简介"><Input name="selectedLogline" defaultValue={hook.selectedLogline ?? ""} /></Field>
+                </TwoCols>
+                <Field label="选定开篇钩子"><Textarea name="selectedHook" defaultValue={hook.selectedHook ?? ""} /></Field>
+                <TwoCols>
+                  <Field label="标题候选 JSON"><Textarea name="titlesJson" defaultValue={hook.titlesJson} /></Field>
+                  <Field label="简介候选 JSON"><Textarea name="loglinesJson" defaultValue={hook.loglinesJson} /></Field>
+                  <Field label="钩子候选 JSON"><Textarea name="openingHooksJson" defaultValue={hook.openingHooksJson} /></Field>
+                  <Field label="开篇前三段 JSON"><Textarea name="openingSamplesJson" defaultValue={hook.openingSamplesJson} /></Field>
+                </TwoCols>
+                <SubmitButton variant="outline" pendingText="保存中">保存钩子包</SubmitButton>
+              </form>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );
@@ -882,6 +957,8 @@ function CharacterEditorCard({
 
 function Outline({ project }: { project: ProjectDetail }) {
   const outline = project.outlines[0];
+  const { chief } = latestChiefFromReports(project, ["revise_outline", "generate_outline"]);
+  const canRevise = outline && canReviseFromChief(chief);
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap justify-between gap-2">
@@ -894,6 +971,17 @@ function Outline({ project }: { project: ProjectDetail }) {
         <Empty text="还没有大纲。" />
       ) : (
         <>
+          <ChiefDecisionPanel
+            title="大纲主编结论"
+            chief={chief}
+            action={
+              canRevise ? (
+                <WorkflowButton projectId={project.id} type="revise_outline" tab="outline">
+                  按结论修订大纲
+                </WorkflowButton>
+              ) : null
+            }
+          />
           <Card>
             <CardHeader><h3 className="font-semibold">故事弧</h3></CardHeader>
             <CardContent className="text-sm leading-7">{outline.storyArc}</CardContent>
@@ -931,6 +1019,8 @@ function Scenes({ project, selectedSceneId }: { project: ProjectDetail; selected
   const segmentBySceneId = buildSegmentBySceneId(project.draftSegments);
   const writtenScenes = project.sceneCards.filter((scene) => segmentBySceneId.has(scene.id)).length;
   const remainingScenes = Math.max(project.sceneCards.length - writtenScenes, 0);
+  const { chief } = latestChiefFromReports(project, ["revise_outline", "generate_outline"]);
+  const canRevise = project.sceneCards.length > 0 && canReviseFromChief(chief);
 
   return (
     <div className="grid gap-3">
@@ -944,6 +1034,19 @@ function Scenes({ project, selectedSceneId }: { project: ProjectDetail; selected
         <Badge>{project.sceneCards.length} 张卡片</Badge>
       </div>
       {project.sceneCards.length === 0 ? <Empty text="还没有场景卡。先生成人物与大纲。" /> : null}
+      {project.sceneCards.length ? (
+        <ChiefDecisionPanel
+          title="场景卡主编结论"
+          chief={chief}
+          action={
+            canRevise ? (
+              <WorkflowButton projectId={project.id} type="revise_outline" tab="scenes" focusSceneId={selectedScene?.id}>
+                按结论修订场景卡
+              </WorkflowButton>
+            ) : null
+          }
+        />
+      ) : null}
       {selectedScene ? (
         <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
           <SceneDrawer
@@ -1335,14 +1438,10 @@ function SegmentChiefPanel({
   project: ProjectDetail;
   segment: ProjectDetail["draftSegments"][number];
 }) {
-  const chief = safeJsonParse<{
-    overallScore?: number;
-    summary?: string;
-    rewriteInstructions?: string[];
-    nextAction?: string;
-  }>(segment.chiefDecisionJson, {});
+  const chief = safeJsonParse<ChiefDecision>(segment.chiefDecisionJson, {});
   const action = readableChiefAction(chief.nextAction);
   const currentScene = segment.sceneCard;
+  const canRevise = Boolean(currentScene && canReviseFromChief(chief));
   const nextScene = currentScene
     ? project.sceneCards.find((scene) => scene.orderIndex === currentScene.orderIndex + 1)
     : undefined;
@@ -1369,9 +1468,9 @@ function SegmentChiefPanel({
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {currentScene && chief.nextAction === "rewrite" ? (
-            <WorkflowButton projectId={project.id} type="write_scene" tab="writing" sceneCardId={currentScene.id}>
-              按意见重写本场
+          {currentScene && canRevise ? (
+            <WorkflowButton projectId={project.id} type="revise_scene" tab="writing" sceneCardId={currentScene.id}>
+              按主编结论修订本场
             </WorkflowButton>
           ) : null}
           {currentScene && chief.nextAction === "regenerate" ? (

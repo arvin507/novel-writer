@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, RotateCw, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { retryWorkflowAction } from "@/app/actions/workflows";
@@ -42,13 +42,45 @@ export function JobWatcher({
   const router = useRouter();
   const [job, setJob] = useState<JobState | null>(null);
   const [isStaleRunning, setIsStaleRunning] = useState(false);
+  const [manualRefreshJobId, setManualRefreshJobId] = useState<string | null>(null);
+  const hasEditedRef = useRef(false);
+  const needsManualRefresh = manualRefreshJobId === jobId;
+
+  const refreshResults = useCallback(() => {
+    if (!jobId) return;
+    sessionStorage.setItem(refreshedJobKey(jobId), "true");
+    setManualRefreshJobId(null);
+    router.refresh();
+  }, [jobId, router]);
 
   useEffect(() => {
     if (!jobId) return;
+
+    hasEditedRef.current = false;
+
+    function markEdited(event: Event) {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === "hidden") return;
+      if (isEditableElement(target)) {
+        hasEditedRef.current = true;
+      }
+    }
+
+    document.addEventListener("input", markEdited, true);
+    document.addEventListener("change", markEdited, true);
+    return () => {
+      document.removeEventListener("input", markEdited, true);
+      document.removeEventListener("change", markEdited, true);
+    };
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const currentJobId = jobId;
     let stopped = false;
 
     async function tick() {
-      const response = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
+      const response = await fetch(`/api/jobs/${currentJobId}`, { cache: "no-store" });
       if (!response.ok || stopped) return;
       const nextJob = (await response.json()) as JobState;
       setJob(nextJob);
@@ -58,17 +90,26 @@ export function JobWatcher({
           Date.now() - new Date(nextJob.startedAt as string).getTime() > 5 * 60 * 1000,
       );
       if (nextJob.status === "success" || nextJob.status === "failed") {
-        router.refresh();
+        stopped = true;
+        clearInterval(timer);
+
+        if (sessionStorage.getItem(refreshedJobKey(currentJobId)) === "true") return;
+        if (hasEditedRef.current || isEditingNow()) {
+          setManualRefreshJobId(currentJobId);
+          return;
+        }
+
+        refreshResults();
       }
     }
 
-    void tick();
     const timer = setInterval(tick, 1800);
+    void tick();
     return () => {
       stopped = true;
       clearInterval(timer);
     };
-  }, [jobId, router]);
+  }, [jobId, refreshResults]);
 
   if (!jobId) return null;
 
@@ -122,6 +163,15 @@ export function JobWatcher({
             </SubmitButton>
           </form>
         ) : null}
+        {needsManualRefresh ? (
+          <button
+            type="button"
+            onClick={refreshResults}
+            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+          >
+            刷新任务结果
+          </button>
+        ) : null}
       </div>
 
       {displayRuns.length ? (
@@ -139,6 +189,23 @@ export function JobWatcher({
       {job?.error ? <p className="mt-2 text-rose-700">{job.error}</p> : null}
     </div>
   );
+}
+
+function refreshedJobKey(jobId: string) {
+  return `novel-writer:job-refreshed:${jobId}`;
+}
+
+function isEditingNow() {
+  return isEditableElement(document.activeElement);
+}
+
+function isEditableElement(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  if (target instanceof HTMLInputElement) {
+    return target.type !== "button" && target.type !== "submit" && target.type !== "reset" && target.type !== "hidden";
+  }
+  return target.isContentEditable;
 }
 
 function compactRuns(runs: AgentRunState[]) {
