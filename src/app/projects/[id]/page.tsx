@@ -759,6 +759,7 @@ function SceneDrawer({
               <Link
                 key={scene.id}
                 href={projectTabHref(project.id, tab, { sceneId: scene.id })}
+                scroll={false}
                 className={cn(
                   "flex min-h-16 gap-3 rounded-md border px-3 py-2 text-left transition",
                   selected
@@ -794,6 +795,7 @@ function SceneDrawer({
                   <Link
                     key={segment.id}
                     href={projectTabHref(project.id, "writing", { segmentId: segment.id })}
+                    scroll={false}
                     className={cn(
                       "flex min-h-14 items-center gap-3 rounded-md border px-3 py-2 transition",
                       selected
