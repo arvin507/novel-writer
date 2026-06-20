@@ -196,6 +196,28 @@ export async function updateHookPackageAction(formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+export async function updateCharacterAction(formData: FormData) {
+  const id = String(formData.get("id") || "");
+  const projectId = String(formData.get("projectId") || "");
+  await prisma.character.update({
+    where: { id },
+    data: {
+      name: String(formData.get("name") || ""),
+      role: String(formData.get("role") || ""),
+      identity: String(formData.get("identity") || ""),
+      surfaceGoal: String(formData.get("surfaceGoal") || ""),
+      trueDesire: String(formData.get("trueDesire") || ""),
+      weakness: String(formData.get("weakness") || ""),
+      secret: String(formData.get("secret") || ""),
+      relationshipToProtagonist: String(formData.get("relationshipToProtagonist") || ""),
+      plotFunction: String(formData.get("plotFunction") || ""),
+      turningPoint: String(formData.get("turningPoint") || ""),
+      ending: String(formData.get("ending") || ""),
+    },
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function updateSceneCardAction(formData: FormData) {
   const id = String(formData.get("id") || "");
   const projectId = String(formData.get("projectId") || "");

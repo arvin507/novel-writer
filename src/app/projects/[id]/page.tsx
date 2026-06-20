@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   BookOpenCheck,
   CheckCircle2,
+  Compass,
   Download,
   FileText,
   GitCompare,
@@ -13,11 +14,13 @@ import {
   Play,
   ScrollText,
   Target,
+  Users,
 } from "lucide-react";
 import {
   rollbackDraftVersionAction,
   saveStoryBibleAction,
   selectDirectionAction,
+  updateCharacterAction,
   updateDraftSegmentAction,
   updateHookPackageAction,
   updateProjectAction,
@@ -95,6 +98,8 @@ async function getProject(id: string) {
 }
 
 type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProject>>>;
+type StoryDirectionItem = ProjectDetail["storyDirections"][number];
+type CharacterItem = ProjectDetail["characters"][number];
 type SceneCardItem = ProjectDetail["sceneCards"][number];
 type DraftSegmentItem = ProjectDetail["draftSegments"][number];
 
@@ -111,6 +116,8 @@ export default async function ProjectPage({
     error?: string;
     sceneId?: string;
     segmentId?: string;
+    directionId?: string;
+    characterId?: string;
   }>;
 }) {
   const { id } = await params;
@@ -129,7 +136,7 @@ export default async function ProjectPage({
   const progress = project.targetWordCount
     ? Math.min(100, Math.round((totalWords / project.targetWordCount) * 100))
     : 0;
-  const compactWorkspace = activeTab === "scenes" || activeTab === "writing";
+  const compactWorkspace = ["directions", "characters", "scenes", "writing"].includes(activeTab);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-5 lg:py-6">
@@ -194,9 +201,9 @@ export default async function ProjectPage({
       <JobWatcher jobId={watchedJobId} projectId={project.id} tab={activeTab} focusSceneId={query.sceneId} />
 
       {activeTab === "overview" ? <Overview project={project} totalWords={totalWords} /> : null}
-      {activeTab === "directions" ? <Directions project={project} /> : null}
+      {activeTab === "directions" ? <Directions project={project} selectedDirectionId={query.directionId} /> : null}
       {activeTab === "hooks" ? <Hooks project={project} /> : null}
-      {activeTab === "characters" ? <Characters project={project} /> : null}
+      {activeTab === "characters" ? <Characters project={project} selectedCharacterId={query.characterId} /> : null}
       {activeTab === "outline" ? <Outline project={project} /> : null}
       {activeTab === "scenes" ? <Scenes project={project} selectedSceneId={query.sceneId} /> : null}
       {activeTab === "writing" ? (
@@ -493,56 +500,180 @@ function Overview({ project, totalWords }: { project: ProjectDetail; totalWords:
   );
 }
 
-function Directions({ project }: { project: ProjectDetail }) {
+function Directions({
+  project,
+  selectedDirectionId,
+}: {
+  project: ProjectDetail;
+  selectedDirectionId?: string;
+}) {
+  const selectedDirection =
+    project.storyDirections.find((direction) => direction.id === selectedDirectionId) ??
+    project.storyDirections.find((direction) => direction.selected) ??
+    project.storyDirections[0];
+
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap justify-between gap-2">
-        <h2 className="text-lg font-semibold">故事方向</h2>
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-white/85 px-4 py-3 shadow-sm shadow-zinc-200/60">
+        <div>
+          <h2 className="text-lg font-semibold">故事方向</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            {project.storyDirections.length} 个方向，{project.storyDirections.find((direction) => direction.selected)?.title ?? "尚未选择"}
+          </p>
+        </div>
         <WorkflowButton projectId={project.id} type="generate_story_directions" tab="directions">
           一键重新生成
         </WorkflowButton>
       </div>
       {project.storyDirections.length === 0 ? <Empty text="还没有故事方向。" /> : null}
-      {project.storyDirections.map((direction) => (
-        <Card key={direction.id}>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold">{direction.title}</h3>
-              <p className="mt-1 text-sm text-zinc-600">{direction.logline}</p>
+      {selectedDirection ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
+          <DirectionDrawer project={project} selectedDirectionId={selectedDirection.id} />
+          <StoryDirectionEditorCard key={selectedDirection.id} project={project} direction={selectedDirection} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DirectionDrawer({
+  project,
+  selectedDirectionId,
+}: {
+  project: ProjectDetail;
+  selectedDirectionId?: string;
+}) {
+  return (
+    <aside className="overflow-hidden rounded-lg border border-zinc-200 bg-white/95 shadow-sm shadow-zinc-200/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-24.5rem)]">
+      <div className="border-b border-zinc-100 bg-zinc-50/80 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <PanelLeft className="h-4 w-4 shrink-0 text-zinc-600" />
+            <span className="font-medium text-zinc-950">方向抽屉</span>
+          </div>
+          <Badge className="bg-white">{project.storyDirections.length} 个</Badge>
+        </div>
+      </div>
+      <nav className="max-h-[420px] overflow-y-auto p-2 lg:max-h-[calc(100vh-28rem)]">
+        <div className="grid gap-1">
+          {project.storyDirections.map((direction, index) => {
+            const selected = direction.id === selectedDirectionId;
+            return (
+              <PreserveScrollLink
+                key={direction.id}
+                href={projectTabHref(project.id, "directions", { directionId: direction.id })}
+                className={cn(
+                  "grid min-h-[78px] grid-cols-[2rem_minmax(0,1fr)] gap-3 rounded-md border px-3 py-2.5 text-left transition",
+                  selected
+                    ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
+                    : "border-transparent bg-white/60 text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold",
+                    selected ? "bg-white text-zinc-950" : "bg-zinc-100 text-zinc-700",
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium">{direction.title}</span>
+                    {direction.selected ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-teal-500" /> : null}
+                  </span>
+                  <span className={cn("mt-1 block truncate text-xs", selected ? "text-zinc-300" : "text-zinc-500")}>
+                    {direction.logline}
+                  </span>
+                  <span className={cn("mt-2 block text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
+                    商业分 {direction.commercialScore}
+                  </span>
+                </span>
+              </PreserveScrollLink>
+            );
+          })}
+        </div>
+      </nav>
+    </aside>
+  );
+}
+
+function StoryDirectionEditorCard({
+  project,
+  direction,
+}: {
+  project: ProjectDetail;
+  direction: StoryDirectionItem;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-col gap-3 bg-white sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white">
+            <Compass className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-zinc-500">
+              <Target className="h-3.5 w-3.5" />
+              故事方向
             </div>
-            <form action={selectDirectionAction}>
-              <input type="hidden" name="projectId" value={project.id} />
-              <input type="hidden" name="directionId" value={direction.id} />
-              <SubmitButton variant={direction.selected ? "outline" : "primary"} pendingText="选择中">
-                {direction.selected ? "已选择" : "选择"}
-              </SubmitButton>
-            </form>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-3" action={updateStoryDirectionAction}>
-              <input type="hidden" name="id" value={direction.id} />
-              <input type="hidden" name="projectId" value={project.id} />
-              <TwoCols>
+            <h3 className="truncate font-semibold text-zinc-950">{direction.title}</h3>
+            <p className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600">{direction.logline}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Badge>商业分 {direction.commercialScore}</Badge>
+          {direction.selected ? <Badge className="border-teal-200 bg-teal-50 text-teal-900">已选择</Badge> : null}
+          <form action={selectDirectionAction}>
+            <input type="hidden" name="projectId" value={project.id} />
+            <input type="hidden" name="directionId" value={direction.id} />
+            <SubmitButton variant={direction.selected ? "outline" : "primary"} pendingText="选择中">
+              {direction.selected ? "已选择" : "选择"}
+            </SubmitButton>
+          </form>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <form className="grid gap-5" action={updateStoryDirectionAction}>
+          <input type="hidden" name="id" value={direction.id} />
+          <input type="hidden" name="projectId" value={project.id} />
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+            <div className="grid content-start gap-3">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
                 <Field label="标题"><Input name="title" defaultValue={direction.title} /></Field>
-                <Field label="商业分"><Input name="commercialScore" type="number" defaultValue={direction.commercialScore} /></Field>
-              </TwoCols>
+                <Field label="商业分">
+                  <Input name="commercialScore" type="number" defaultValue={direction.commercialScore} />
+                </Field>
+              </div>
               <Field label="一句话故事"><Textarea name="logline" defaultValue={direction.logline} /></Field>
               <TwoCols>
                 <Field label="开篇钩子"><Textarea name="openingHook" defaultValue={direction.openingHook} /></Field>
                 <Field label="核心冲突"><Textarea name="coreConflict" defaultValue={direction.coreConflict} /></Field>
-                <Field label="主角困境"><Textarea name="protagonistDilemma" defaultValue={direction.protagonistDilemma} /></Field>
+                <Field label="主角困境">
+                  <Textarea name="protagonistDilemma" defaultValue={direction.protagonistDilemma} />
+                </Field>
                 <Field label="主反转"><Textarea name="mainTwist" defaultValue={direction.mainTwist} /></Field>
                 <Field label="情绪价值"><Textarea name="emotionalValue" defaultValue={direction.emotionalValue} /></Field>
-                <Field label="目标读者"><Textarea name="targetReaders" defaultValue={direction.targetReaders} /></Field>
-                <Field label="风险"><Textarea name="risk" defaultValue={direction.risk} /></Field>
-                <Field label="推荐理由"><Textarea name="recommendationReason" defaultValue={direction.recommendationReason} /></Field>
               </TwoCols>
-              <SubmitButton variant="outline" pendingText="保存中">保存修改</SubmitButton>
-            </form>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+            </div>
+            <div className="grid content-start gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                <ListChecks className="h-4 w-4 text-zinc-500" />
+                评估与取舍
+              </div>
+              <Field label="目标读者"><Textarea name="targetReaders" defaultValue={direction.targetReaders} /></Field>
+              <Field label="风险"><Textarea name="risk" defaultValue={direction.risk} /></Field>
+              <Field label="推荐理由">
+                <Textarea name="recommendationReason" defaultValue={direction.recommendationReason} />
+              </Field>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton variant="outline" pendingText="保存中">保存修改</SubmitButton>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -584,37 +715,161 @@ function Hooks({ project }: { project: ProjectDetail }) {
   );
 }
 
-function Characters({ project }: { project: ProjectDetail }) {
+function Characters({
+  project,
+  selectedCharacterId,
+}: {
+  project: ProjectDetail;
+  selectedCharacterId?: string;
+}) {
+  const selectedCharacter =
+    project.characters.find((character) => character.id === selectedCharacterId) ?? project.characters[0];
+
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap justify-between gap-2">
-        <h2 className="text-lg font-semibold">人物设定</h2>
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-white/85 px-4 py-3 shadow-sm shadow-zinc-200/60">
+        <div>
+          <h2 className="text-lg font-semibold">人物设定</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            {project.characters.length} 个人物，当前查看 {selectedCharacter?.name ?? "暂无"}
+          </p>
+        </div>
         <WorkflowButton projectId={project.id} type="generate_outline" tab="characters">
           生成人物与大纲
         </WorkflowButton>
       </div>
       {project.characters.length === 0 ? <Empty text="还没有人物设定。" /> : null}
-      <div className="grid gap-3 md:grid-cols-2">
-        {project.characters.map((character) => (
-          <Card key={character.id}>
-            <CardHeader>
-              <h3 className="font-semibold">{character.name}</h3>
-              <p className="text-sm text-zinc-600">{character.role} / {character.identity}</p>
-            </CardHeader>
-            <CardContent className="grid gap-2 text-sm leading-6">
-              <Row label="表层目标" value={character.surfaceGoal} />
-              <Row label="真实欲望" value={character.trueDesire} />
-              <Row label="弱点" value={character.weakness} />
-              <Row label="秘密" value={character.secret} />
-              <Row label="关系" value={character.relationshipToProtagonist} />
-              <Row label="剧情功能" value={character.plotFunction} />
-              <Row label="转折" value={character.turningPoint} />
-              <Row label="结局" value={character.ending} />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {selectedCharacter ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
+          <CharacterDrawer project={project} selectedCharacterId={selectedCharacter.id} />
+          <CharacterEditorCard key={selectedCharacter.id} project={project} character={selectedCharacter} />
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function CharacterDrawer({
+  project,
+  selectedCharacterId,
+}: {
+  project: ProjectDetail;
+  selectedCharacterId?: string;
+}) {
+  return (
+    <aside className="overflow-hidden rounded-lg border border-zinc-200 bg-white/95 shadow-sm shadow-zinc-200/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-24.5rem)]">
+      <div className="border-b border-zinc-100 bg-zinc-50/80 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <PanelLeft className="h-4 w-4 shrink-0 text-zinc-600" />
+            <span className="font-medium text-zinc-950">人物抽屉</span>
+          </div>
+          <Badge className="bg-white">{project.characters.length} 人</Badge>
+        </div>
+      </div>
+      <nav className="max-h-[420px] overflow-y-auto p-2 lg:max-h-[calc(100vh-28rem)]">
+        <div className="grid gap-1">
+          {project.characters.map((character) => {
+            const selected = character.id === selectedCharacterId;
+            return (
+              <PreserveScrollLink
+                key={character.id}
+                href={projectTabHref(project.id, "characters", { characterId: character.id })}
+                className={cn(
+                  "grid min-h-[76px] grid-cols-[2rem_minmax(0,1fr)] gap-3 rounded-md border px-3 py-2.5 text-left transition",
+                  selected
+                    ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
+                    : "border-transparent bg-white/60 text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold",
+                    selected ? "bg-white text-zinc-950" : "bg-zinc-100 text-zinc-700",
+                  )}
+                >
+                  {character.name.slice(0, 1) || "人"}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{character.name}</span>
+                  <span className={cn("mt-1 block truncate text-xs", selected ? "text-zinc-300" : "text-zinc-500")}>
+                    {character.role} / {character.identity}
+                  </span>
+                  <span className={cn("mt-2 block truncate text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
+                    {character.plotFunction || character.relationshipToProtagonist}
+                  </span>
+                </span>
+              </PreserveScrollLink>
+            );
+          })}
+        </div>
+      </nav>
+    </aside>
+  );
+}
+
+function CharacterEditorCard({
+  project,
+  character,
+}: {
+  project: ProjectDetail;
+  character: CharacterItem;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-col gap-3 bg-white sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-teal-700 text-white">
+            <Users className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-zinc-500">
+              <Users className="h-3.5 w-3.5" />
+              人物设定
+            </div>
+            <h3 className="truncate font-semibold text-zinc-950">{character.name}</h3>
+            <p className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600">
+              {character.role} / {character.identity}
+            </p>
+          </div>
+        </div>
+        <Badge>{character.role}</Badge>
+      </CardHeader>
+      <CardContent>
+        <form action={updateCharacterAction} className="grid gap-5">
+          <input type="hidden" name="id" value={character.id} />
+          <input type="hidden" name="projectId" value={project.id} />
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+            <div className="grid content-start gap-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field label="姓名"><Input name="name" defaultValue={character.name} /></Field>
+                <Field label="角色"><Input name="role" defaultValue={character.role} /></Field>
+                <Field label="身份"><Input name="identity" defaultValue={character.identity} /></Field>
+              </div>
+              <TwoCols>
+                <Field label="表层目标"><Textarea name="surfaceGoal" defaultValue={character.surfaceGoal} /></Field>
+                <Field label="真实欲望"><Textarea name="trueDesire" defaultValue={character.trueDesire} /></Field>
+                <Field label="弱点"><Textarea name="weakness" defaultValue={character.weakness} /></Field>
+                <Field label="秘密"><Textarea name="secret" defaultValue={character.secret} /></Field>
+              </TwoCols>
+            </div>
+            <div className="grid content-start gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                <Target className="h-4 w-4 text-zinc-500" />
+                剧情功能
+              </div>
+              <Field label="关系"><Textarea name="relationshipToProtagonist" defaultValue={character.relationshipToProtagonist} /></Field>
+              <Field label="剧情功能"><Textarea name="plotFunction" defaultValue={character.plotFunction} /></Field>
+              <Field label="转折"><Textarea name="turningPoint" defaultValue={character.turningPoint} /></Field>
+              <Field label="结局"><Textarea name="ending" defaultValue={character.ending} /></Field>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton variant="outline" pendingText="保存中">保存人物设定</SubmitButton>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
