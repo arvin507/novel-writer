@@ -8,7 +8,11 @@ import {
   GitCompare,
   Info,
   ListChecks,
+  PanelLeft,
+  PenLine,
   Play,
+  ScrollText,
+  Target,
 } from "lucide-react";
 import {
   rollbackDraftVersionAction,
@@ -26,6 +30,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { SubmitButton } from "@/components/form/SubmitButton";
 import { JobWatcher } from "@/components/JobWatcher";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { PreserveScrollLink } from "@/components/PreserveScrollLink";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -58,6 +63,12 @@ const tabs = [
   ["export", "导出"],
   ["settings", "设置"],
 ] as const;
+
+const tabGroups = [
+  { label: "规划", items: [tabs[0], tabs[1], tabs[2], tabs[3], tabs[4]] },
+  { label: "创作", items: [tabs[5], tabs[6], tabs[7], tabs[8]] },
+  { label: "交付", items: [tabs[9], tabs[10]] },
+];
 
 async function getProject(id: string) {
   return prisma.project.findUnique({
@@ -118,11 +129,17 @@ export default async function ProjectPage({
   const progress = project.targetWordCount
     ? Math.min(100, Math.round((totalWords / project.targetWordCount) * 100))
     : 0;
+  const compactWorkspace = activeTab === "scenes" || activeTab === "writing";
 
   return (
-    <main className="mx-auto max-w-7xl px-5 py-8">
-      <section className="mb-5 rounded-lg border border-zinc-200/80 bg-white/90 px-5 py-5 shadow-sm shadow-zinc-200/70">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <main className="mx-auto max-w-7xl px-4 py-5 sm:px-5 lg:py-6">
+      <section className="mb-3 overflow-hidden rounded-lg border border-zinc-200/80 bg-white/92 shadow-sm shadow-zinc-200/70">
+        <div
+          className={cn(
+            "grid gap-4 border-b border-zinc-100 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] lg:items-start",
+            compactWorkspace && "py-3",
+          )}
+        >
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Link className="text-sm text-zinc-500 hover:text-zinc-900" href="/dashboard">
@@ -132,41 +149,35 @@ export default async function ProjectPage({
               <Badge className="border-teal-200 bg-teal-50 text-teal-900">{readableStage(project.currentStage)}</Badge>
               <Badge>{project.genre}</Badge>
             </div>
-            <h1 className="text-2xl font-semibold text-zinc-950">{project.title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">{project.originalIdea}</p>
+            <h1 className="truncate text-xl font-semibold text-zinc-950 sm:text-2xl">{project.title}</h1>
+            {compactWorkspace ? null : (
+              <p className="mt-1 max-w-4xl text-sm leading-6 text-zinc-600">{project.originalIdea}</p>
+            )}
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-sm sm:min-w-[360px]">
+          <div className="grid grid-cols-3 gap-2 text-center text-sm">
             <Metric label="目标字数" value={project.targetWordCount.toString()} />
             <Metric label="当前字数" value={totalWords.toString()} />
             <Metric label="已写场景" value={`${writtenScenes}/${project.sceneCards.length || 0}`} />
           </div>
         </div>
-        <div className="mt-5">
-          <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
-            <span>正文进度</span>
-            <span>{progress}%</span>
+        <div className={cn("px-4 py-3", compactWorkspace && "py-2")}>
+          <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", !compactWorkspace && "mb-3")}>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex items-center justify-between text-xs text-zinc-500">
+                <span>正文进度</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                <div className="h-full rounded-full bg-teal-700" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+            <Badge className="w-fit border-zinc-200 bg-white text-zinc-700">当前：{readableStage(project.currentStage)}</Badge>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
-            <div className="h-full rounded-full bg-teal-700" style={{ width: `${progress}%` }} />
-          </div>
+          {compactWorkspace ? null : <StageRail project={project} activeTab={activeTab} />}
         </div>
-        <StageRail project={project} activeTab={activeTab} />
       </section>
 
-      <nav className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-zinc-200 bg-white/92 p-1 shadow-sm backdrop-blur">
-        {tabs.map(([key, label]) => (
-          <Link
-            key={key}
-            href={`/projects/${project.id}?tab=${key}`}
-            className={cn(
-              "whitespace-nowrap rounded-md px-3 py-2 text-sm text-zinc-600 transition",
-              activeTab === key && "bg-zinc-950 text-white shadow-sm",
-            )}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <ProjectTabs projectId={project.id} activeTab={activeTab} />
 
       {activeTab === "overview" ? (
         <div className="mb-4">
@@ -199,6 +210,30 @@ export default async function ProjectPage({
   );
 }
 
+function ProjectTabs({ projectId, activeTab }: { projectId: string; activeTab: string }) {
+  return (
+    <nav className="sticky top-2 z-10 mb-4 flex gap-2 overflow-x-auto rounded-lg border border-zinc-200 bg-white/94 p-1.5 shadow-sm shadow-zinc-200/70 backdrop-blur">
+      {tabGroups.map((group) => (
+        <div key={group.label} className="flex shrink-0 items-center gap-1 rounded-md bg-zinc-50/80 p-1">
+          <span className="px-2 text-[11px] font-medium text-zinc-400">{group.label}</span>
+          {group.items.map(([key, label]) => (
+            <Link
+              key={key}
+              href={`/projects/${projectId}?tab=${key}`}
+              className={cn(
+                "whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-white hover:text-zinc-950",
+                activeTab === key && "bg-zinc-950 text-white shadow-sm hover:bg-zinc-950 hover:text-white",
+              )}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 function StageRail({ project, activeTab }: { project: ProjectDetail; activeTab: string }) {
   const completed = new Set<string>();
   if (project.storyDirections.length) completed.add("directions");
@@ -210,7 +245,7 @@ function StageRail({ project, activeTab }: { project: ProjectDetail; activeTab: 
   if (project.exportFiles.length) completed.add("export");
 
   return (
-    <div className="mt-5 grid gap-2 md:grid-cols-7">
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
       {projectMilestones.map((milestone) => {
         const Icon = milestone.icon;
         const done = completed.has(milestone.key);
@@ -220,14 +255,14 @@ function StageRail({ project, activeTab }: { project: ProjectDetail; activeTab: 
             key={milestone.key}
             href={`/projects/${project.id}?tab=${milestone.key}`}
             className={cn(
-              "flex min-h-14 items-center gap-2 rounded-md border px-3 py-2 text-sm transition",
+              "flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm transition",
               done && "border-teal-200 bg-teal-50 text-teal-950",
               active && "border-zinc-950 bg-zinc-950 text-white",
               !done && !active && "border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-white",
             )}
           >
-            {done && !active ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-            <span>{milestone.label}</span>
+            {done && !active ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Icon className="h-4 w-4 shrink-0" />}
+            <span className="truncate">{milestone.label}</span>
           </Link>
         );
       })}
@@ -319,8 +354,8 @@ function NextBestActions({ project }: { project: ProjectDetail }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
-      <div className="text-base font-semibold">{value}</div>
+    <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+      <div className="text-sm font-semibold text-zinc-950">{value}</div>
       <div className="text-xs text-zinc-500">{label}</div>
     </div>
   );
@@ -632,19 +667,23 @@ function Scenes({ project, selectedSceneId }: { project: ProjectDetail; selected
   const selectedScene =
     project.sceneCards.find((scene) => scene.id === selectedSceneId) ?? project.sceneCards[0];
   const segmentBySceneId = buildSegmentBySceneId(project.draftSegments);
+  const writtenScenes = project.sceneCards.filter((scene) => segmentBySceneId.has(scene.id)).length;
+  const remainingScenes = Math.max(project.sceneCards.length - writtenScenes, 0);
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-white/85 px-4 py-3 shadow-sm shadow-zinc-200/60">
         <div>
           <h2 className="text-lg font-semibold">场景卡片</h2>
-          <p className="mt-1 text-sm text-zinc-600">左侧选择场景，右侧编辑当前卡片。</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            {writtenScenes} 个已有正文，{remainingScenes} 个待写
+          </p>
         </div>
         <Badge>{project.sceneCards.length} 张卡片</Badge>
       </div>
       {project.sceneCards.length === 0 ? <Empty text="还没有场景卡。先生成人物与大纲。" /> : null}
       {selectedScene ? (
-        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
           <SceneDrawer
             project={project}
             tab="scenes"
@@ -689,11 +728,13 @@ function Writing({
   const totalWords = project.draftSegments.reduce((sum, item) => sum + item.wordCount, 0);
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap justify-between gap-2">
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-white/85 px-4 py-3 shadow-sm shadow-zinc-200/60">
         <div>
           <h2 className="text-lg font-semibold">正文写作</h2>
-          <p className="mt-1 text-sm text-zinc-600">左侧切换场景，右侧写作或查看正文。</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            {orderedSegments.length} 段正文，{project.sceneCards.length} 个场景
+          </p>
         </div>
         <Badge>全文 {totalWords} 字</Badge>
       </div>
@@ -701,7 +742,7 @@ function Writing({
         <Empty text="还没有正文。去场景卡片里选择一个场景生成。" />
       ) : null}
       {project.sceneCards.length || orderedSegments.length ? (
-        <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
           <SceneDrawer
             project={project}
             tab="writing"
@@ -741,35 +782,45 @@ function SceneDrawer({
   segmentBySceneId: Map<string, DraftSegmentItem>;
   manualSegments?: DraftSegmentItem[];
 }) {
+  const writtenScenes = project.sceneCards.filter((scene) => segmentBySceneId.has(scene.id)).length;
+  const progress = project.sceneCards.length ? Math.round((writtenScenes / project.sceneCards.length) * 100) : 0;
+  const drawerWords = Array.from(segmentBySceneId.values()).reduce((sum, segment) => sum + segment.wordCount, 0);
+  const drawerTitle = tab === "writing" ? "正文抽屉" : "场景抽屉";
+  const drawerMeta = tab === "writing" ? `${drawerWords} 字` : `${writtenScenes}/${project.sceneCards.length} 已写`;
+
   return (
-    <aside className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm shadow-zinc-200/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <ListChecks className="h-4 w-4 shrink-0 text-zinc-600" />
-          <span className="font-medium text-zinc-950">场景抽屉</span>
+    <aside className="overflow-hidden rounded-lg border border-zinc-200 bg-white/95 shadow-sm shadow-zinc-200/60 lg:sticky lg:top-20 lg:max-h-[calc(100vh-24.5rem)]">
+      <div className="border-b border-zinc-100 bg-zinc-50/80 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <PanelLeft className="h-4 w-4 shrink-0 text-zinc-600" />
+            <span className="font-medium text-zinc-950">{drawerTitle}</span>
+          </div>
+          <Badge className="bg-white">{drawerMeta}</Badge>
         </div>
-        <Badge>{project.sceneCards.length}</Badge>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-200">
+          <div className="h-full rounded-full bg-teal-700" style={{ width: `${progress}%` }} />
+        </div>
       </div>
-      <nav className="max-h-[380px] overflow-y-auto p-2 lg:max-h-[calc(100vh-10rem)]">
+      <nav className="max-h-[420px] overflow-y-auto p-2 lg:max-h-[calc(100vh-29rem)]">
         <div className="grid gap-1">
           {project.sceneCards.map((scene) => {
             const segment = segmentBySceneId.get(scene.id);
             const selected = scene.id === selectedSceneId;
             return (
-              <Link
+              <PreserveScrollLink
                 key={scene.id}
                 href={projectTabHref(project.id, tab, { sceneId: scene.id })}
-                scroll={false}
                 className={cn(
-                  "flex min-h-16 gap-3 rounded-md border px-3 py-2 text-left transition",
+                  "grid min-h-[74px] grid-cols-[2rem_minmax(0,1fr)] gap-3 rounded-md border px-3 py-2.5 text-left transition",
                   selected
                     ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
-                    : "border-transparent text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
+                    : "border-transparent bg-white/60 text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
                 )}
               >
                 <span
                   className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold",
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-semibold",
                     selected ? "bg-white text-zinc-950" : "bg-zinc-100 text-zinc-700",
                   )}
                 >
@@ -777,11 +828,21 @@ function SceneDrawer({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{scene.title}</span>
-                  <span className={cn("mt-1 block truncate text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
+                  <span className={cn("mt-1 block truncate text-xs", selected ? "text-zinc-300" : "text-zinc-500")}>
+                    {scene.goal || scene.conflict || "未填写目标"}
+                  </span>
+                  <span className={cn("mt-2 flex items-center gap-2 text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        segment ? "bg-teal-500" : "bg-zinc-300",
+                        selected && (segment ? "bg-teal-300" : "bg-zinc-400"),
+                      )}
+                    />
                     {segment ? `${segment.wordCount} 字` : "未写正文"} / {readableSceneStatus(scene.status)}
                   </span>
                 </span>
-              </Link>
+              </PreserveScrollLink>
             );
           })}
         </div>
@@ -792,25 +853,24 @@ function SceneDrawer({
               {manualSegments.map((segment) => {
                 const selected = segment.id === selectedSegmentId;
                 return (
-                  <Link
+                  <PreserveScrollLink
                     key={segment.id}
                     href={projectTabHref(project.id, "writing", { segmentId: segment.id })}
-                    scroll={false}
                     className={cn(
                       "flex min-h-14 items-center gap-3 rounded-md border px-3 py-2 transition",
                       selected
                         ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
-                        : "border-transparent text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
+                        : "border-transparent bg-white/60 text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50",
                     )}
                   >
-                    <FileText className="h-4 w-4 shrink-0" />
+                    <ScrollText className="h-4 w-4 shrink-0" />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{segment.title}</span>
                       <span className={cn("mt-1 block text-xs", selected ? "text-zinc-200" : "text-zinc-500")}>
                         {segment.wordCount} 字 / {readableSceneStatus(segment.status)}
                       </span>
                     </span>
-                  </Link>
+                  </PreserveScrollLink>
                 );
               })}
             </div>
@@ -831,18 +891,29 @@ function SceneEditorCard({
   segment?: DraftSegmentItem;
 }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold">
-            {scene.orderIndex}. {scene.title}
-          </h3>
-          <p className="mt-1 text-sm text-zinc-600">{scene.conflict}</p>
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-col gap-3 bg-white sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-base font-semibold text-white">
+            {scene.orderIndex}
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-zinc-500">
+              <ListChecks className="h-3.5 w-3.5" />
+              场景卡
+            </div>
+            <h3 className="truncate font-semibold text-zinc-950">{scene.title}</h3>
+            <p className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600">{scene.conflict || scene.goal}</p>
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Badge>{readableSceneStatus(scene.status)}</Badge>
           {segment ? (
-            <Link className={buttonVariants("outline")} href={projectTabHref(project.id, "writing", { sceneId: scene.id })}>
+            <Link
+              className={buttonVariants("outline")}
+              href={projectTabHref(project.id, "writing", { sceneId: scene.id })}
+              scroll={false}
+            >
               <FileText className="h-4 w-4" />
               查看正文
             </Link>
@@ -853,23 +924,41 @@ function SceneEditorCard({
         </div>
       </CardHeader>
       <CardContent>
-        <form action={updateSceneCardAction} className="grid gap-3">
+        <form action={updateSceneCardAction} className="grid gap-5">
           <input type="hidden" name="id" value={scene.id} />
           <input type="hidden" name="projectId" value={project.id} />
-          <TwoCols>
-            <Field label="标题"><Input name="title" defaultValue={scene.title} /></Field>
-            <Field label="状态"><Input name="status" defaultValue={scene.status} /></Field>
-            <Field label="目标"><Textarea name="goal" defaultValue={scene.goal} /></Field>
-            <Field label="地点"><Textarea name="location" defaultValue={scene.location} /></Field>
-            <Field label="冲突"><Textarea name="conflict" defaultValue={scene.conflict} /></Field>
-            <Field label="信息增量"><Textarea name="informationGain" defaultValue={scene.informationGain} /></Field>
-            <Field label="情绪变化"><Textarea name="emotionalShift" defaultValue={scene.emotionalShift} /></Field>
-            <Field label="回收"><Textarea name="payoff" defaultValue={scene.payoff} /></Field>
-            <Field label="必须包含 JSON"><Textarea name="mustIncludeJson" defaultValue={scene.mustIncludeJson} /></Field>
-            <Field label="伏笔 JSON"><Textarea name="foreshadowingJson" defaultValue={scene.foreshadowingJson} /></Field>
-            <Field label="禁止 JSON"><Textarea name="forbiddenJson" defaultValue={scene.forbiddenJson} /></Field>
-          </TwoCols>
-          <SubmitButton variant="outline" pendingText="保存中">保存场景卡</SubmitButton>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+            <div className="grid content-start gap-3">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                <Field label="标题"><Input name="title" defaultValue={scene.title} /></Field>
+                <Field label="状态"><Input name="status" defaultValue={scene.status} /></Field>
+              </div>
+              <TwoCols>
+                <Field label="目标"><Textarea className="min-h-24" name="goal" defaultValue={scene.goal} /></Field>
+                <Field label="地点"><Textarea className="min-h-24" name="location" defaultValue={scene.location} /></Field>
+                <Field label="冲突"><Textarea className="min-h-24" name="conflict" defaultValue={scene.conflict} /></Field>
+                <Field label="信息增量">
+                  <Textarea className="min-h-24" name="informationGain" defaultValue={scene.informationGain} />
+                </Field>
+                <Field label="情绪变化">
+                  <Textarea className="min-h-24" name="emotionalShift" defaultValue={scene.emotionalShift} />
+                </Field>
+                <Field label="回收"><Textarea className="min-h-24" name="payoff" defaultValue={scene.payoff} /></Field>
+              </TwoCols>
+            </div>
+            <div className="grid content-start gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                <Target className="h-4 w-4 text-zinc-500" />
+                写作约束
+              </div>
+              <Field label="必须包含 JSON"><Textarea name="mustIncludeJson" defaultValue={scene.mustIncludeJson} /></Field>
+              <Field label="伏笔 JSON"><Textarea name="foreshadowingJson" defaultValue={scene.foreshadowingJson} /></Field>
+              <Field label="禁止 JSON"><Textarea name="forbiddenJson" defaultValue={scene.forbiddenJson} /></Field>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton variant="outline" pendingText="保存中">保存场景卡</SubmitButton>
+          </div>
         </form>
       </CardContent>
     </Card>
@@ -887,32 +976,43 @@ function DraftEditorCard({
 }) {
   const referenceScene = scene ?? segment.sceneCard ?? undefined;
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold">{segment.title}</h3>
-          <p className="text-sm text-zinc-600">
-            {segment.sceneCard?.title ?? "手动段落"} / {segment.wordCount} 字 / {readableSceneStatus(segment.status)}
-          </p>
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-col gap-3 bg-white sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-teal-700 text-white">
+            <PenLine className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-zinc-500">
+              <ScrollText className="h-3.5 w-3.5" />
+              正文版本
+            </div>
+            <h3 className="truncate font-semibold text-zinc-950">{segment.title}</h3>
+            <p className="text-sm text-zinc-600">
+              {referenceScene?.title ?? "手动段落"} / {segment.wordCount} 字 / {readableSceneStatus(segment.status)}
+            </p>
+          </div>
         </div>
         <CopyButton text={segment.content} />
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0">
             <form action={updateDraftSegmentAction} className="grid gap-3">
               <input type="hidden" name="id" value={segment.id} />
               <input type="hidden" name="projectId" value={project.id} />
-              <TwoCols>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
                 <Field label="标题"><Input name="title" defaultValue={segment.title} /></Field>
                 <Field label="状态"><Input name="status" defaultValue={segment.status} /></Field>
-              </TwoCols>
-              <MarkdownEditor name="content" defaultValue={segment.content} />
-              <SubmitButton variant="outline" pendingText="保存中">保存正文版本</SubmitButton>
+              </div>
+              <MarkdownEditor name="content" defaultValue={segment.content} minHeight={520} />
+              <div className="flex justify-end">
+                <SubmitButton variant="outline" pendingText="保存中">保存正文版本</SubmitButton>
+              </div>
             </form>
             <SegmentChiefPanel project={project} segment={segment} />
           </div>
-          {referenceScene ? <SceneReferencePanel scene={referenceScene} /> : null}
+          {referenceScene ? <SceneReferencePanel scene={referenceScene} compact /> : null}
         </div>
       </CardContent>
     </Card>
@@ -940,14 +1040,14 @@ function UnwrittenSceneCard({ project, scene }: { project: ProjectDetail; scene:
   );
 }
 
-function SceneReferencePanel({ scene }: { scene: SceneCardItem }) {
+function SceneReferencePanel({ scene, compact = false }: { scene: SceneCardItem; compact?: boolean }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+    <div className={cn("rounded-lg border border-zinc-200 bg-zinc-50/90 p-4", compact && "xl:sticky xl:top-20")}>
       <div className="mb-3 flex items-center gap-2 font-medium text-zinc-950">
         <BookOpenCheck className="h-4 w-4 text-zinc-600" />
         当前场景卡
       </div>
-      <div className="grid gap-3 text-sm leading-6 md:grid-cols-2">
+      <div className={cn("grid gap-3 text-sm leading-6", compact ? "grid-cols-1" : "md:grid-cols-2")}>
         <MiniRow label="目标" value={scene.goal} />
         <MiniRow label="地点" value={scene.location} />
         <MiniRow label="冲突" value={scene.conflict} />
@@ -956,7 +1056,7 @@ function SceneReferencePanel({ scene }: { scene: SceneCardItem }) {
         <MiniRow label="回收" value={scene.payoff} />
       </div>
       {scene.mustIncludeJson !== "[]" || scene.foreshadowingJson !== "[]" || scene.forbiddenJson !== "[]" ? (
-        <div className="mt-3 grid gap-2 text-xs leading-5 text-zinc-600 md:grid-cols-3">
+        <div className={cn("mt-3 grid gap-2 text-xs leading-5 text-zinc-600", compact ? "grid-cols-1" : "md:grid-cols-3")}>
           <MiniBlock label="必须包含" value={scene.mustIncludeJson} />
           <MiniBlock label="伏笔" value={scene.foreshadowingJson} />
           <MiniBlock label="禁止" value={scene.forbiddenJson} />
