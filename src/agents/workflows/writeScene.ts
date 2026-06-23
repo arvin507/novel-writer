@@ -87,7 +87,7 @@ export async function writeScene(
       workflowType,
       agentName: "RewriteAgent",
       systemPrompt: RewriteAgentPrompt,
-      userPrompt: `请按主编意见改写正文。\n原文：${draftOutput.content}\n主编意见：${stringifyJson(chiefOutput.rewriteInstructions)}`,
+      userPrompt: `请按主编意见改写正文。\n写作上下文：${context}\n原文：${draftOutput.content}\n主编意见：${stringifyJson(chiefOutput.rewriteInstructions)}`,
       schema: rewriteSchema,
     });
     rewriteOutput = rewritten;

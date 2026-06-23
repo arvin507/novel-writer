@@ -11,6 +11,7 @@ model Project {
   id                          String    @id @default(cuid())
   title                       String
   genre                       String
+  storyDirectionCount         Int       @default(3)
   keywords                    String
   targetWordCount             Int
   targetPlatform              String    @default("zhihu_yanxuan")
@@ -18,6 +19,8 @@ model Project {
   pov                         String
   endingPreference            String
   emotionalTone               String
+  genreStyleReference         String    @default("")
+  languageStyleReference      String    @default("")
   originalIdea                String
   forbiddenItems              String    @default("")
   currentStage                String    @default("idea")

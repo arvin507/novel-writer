@@ -4,11 +4,21 @@ import { runAgent } from "../orchestrator";
 import {
   ChiefEditorAgentPrompt,
   EmotionEditorAgentPrompt,
+  HookCriticAgentPrompt,
   HookEditorAgentPrompt,
+  HookIntegratorAgentPrompt,
   ReaderRepresentativeAgentPrompt,
 } from "../prompts";
-import { chiefEditorSchema, criticSchema, hookEditorSchema, readerSchema } from "../schemas";
+import {
+  chiefEditorSchema,
+  criticSchema,
+  discussionCriticSchema,
+  hookEditorSchema,
+  readerSchema,
+} from "../schemas";
 import { getProjectOrThrow, projectBrief, saveReviewReport } from "./helpers";
+
+const MAX_HOOK_DISCUSSION_ROUNDS = 3;
 
 type ChiefGuidance = {
   summary?: string;
@@ -47,7 +57,7 @@ export async function reviseHooks(projectId: string) {
     chiefGuidance,
   };
 
-  const hookOutput = await runAgent({
+  let hookOutput = await runAgent({
     projectId,
     workflowType,
     agentName: "HookEditorAgent",
@@ -55,6 +65,38 @@ export async function reviseHooks(projectId: string) {
     userPrompt: `请在保留当前钩子包有效卖点的基础上，严格按主编结论修订标题、简介、开篇钩子和开篇前三段版本。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n当前钩子包：${stringifyJson(currentPackage)}\n主编结论：${stringifyJson(chiefGuidance)}\n要求：不要从零另起炉灶；优先解决 coreProblems 和 rewriteInstructions；若 nextAction 是 ask_user，请根据已有问题给出更稳妥的修订版。`,
     schema: hookEditorSchema,
   });
+  const discussionRounds: Array<Record<string, unknown>> = [
+    { round: 1, proposer: hookOutput },
+  ];
+
+  for (let round = 1; round <= MAX_HOOK_DISCUSSION_ROUNDS; round += 1) {
+    const hookCriticOutput = await runAgent({
+      projectId,
+      workflowType,
+      agentName: "HookCriticAgent",
+      systemPrompt: HookCriticAgentPrompt,
+      userPrompt: `请只找问题，不要给建议。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n上一轮主编结论：${stringifyJson(chiefGuidance)}\n修订后的标题钩子包：${stringifyJson(hookOutput)}`,
+      schema: discussionCriticSchema,
+    });
+    discussionRounds[discussionRounds.length - 1].critic = hookCriticOutput;
+
+    if (round === MAX_HOOK_DISCUSSION_ROUNDS || hookCriticOutput.issues.length === 0) {
+      break;
+    }
+
+    hookOutput = await runAgent({
+      projectId,
+      workflowType,
+      agentName: "HookIntegratorAgent",
+      systemPrompt: HookIntegratorAgentPrompt,
+      userPrompt: `请综合修订稿和批评意见，输出再次修订后的标题钩子包。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n当前钩子包：${stringifyJson(currentPackage)}\n上一轮主编结论：${stringifyJson(chiefGuidance)}\n当前修订稿：${stringifyJson(hookOutput)}\n批评意见：${stringifyJson(hookCriticOutput)}`,
+      schema: hookEditorSchema,
+    });
+    discussionRounds.push({
+      round: round + 1,
+      proposer: hookOutput,
+    });
+  }
 
   const readerOutput = await runAgent({
     projectId,
@@ -118,6 +160,8 @@ export async function reviseHooks(projectId: string) {
     details: {
       revisedFromHookPackageId: currentHookPackage.id,
       chiefGuidance,
+      discussionRounds,
+      finalHookOutput: hookOutput,
       readerOutput,
       emotionOutput,
       chiefOutput,

@@ -1,7 +1,15 @@
 export { TopicPlannerAgentPrompt } from "./TopicPlannerAgent";
+export { StoryDirectionProposerAgentPrompt } from "./StoryDirectionProposerAgent";
+export { StoryDirectionCriticAgentPrompt } from "./StoryDirectionCriticAgent";
+export { StoryDirectionIntegratorAgentPrompt } from "./StoryDirectionIntegratorAgent";
 export { HookEditorAgentPrompt } from "./HookEditorAgent";
+export { HookCriticAgentPrompt } from "./HookCriticAgent";
+export { HookIntegratorAgentPrompt } from "./HookIntegratorAgent";
 export { CharacterDesignerAgentPrompt } from "./CharacterDesignerAgent";
 export { PlotArchitectAgentPrompt } from "./PlotArchitectAgent";
+export { OutlineProposerAgentPrompt } from "./OutlineProposerAgent";
+export { OutlineCriticAgentPrompt } from "./OutlineCriticAgent";
+export { OutlineIntegratorAgentPrompt } from "./OutlineIntegratorAgent";
 export { DraftWriterAgentPrompt } from "./DraftWriterAgent";
 export { LogicCriticAgentPrompt } from "./LogicCriticAgent";
 export { EmotionEditorAgentPrompt } from "./EmotionEditorAgent";

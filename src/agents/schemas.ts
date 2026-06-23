@@ -25,6 +25,21 @@ export const topicPlannerSchema = z.object({
   directions: z.array(storyDirectionSchema).min(3).max(8),
 });
 
+export const storyDirectionGenerationSchema = z.object({
+  directions: z.array(storyDirectionSchema).min(1).max(4),
+});
+
+export const discussionCriticSchema = z.object({
+  summary: z.string(),
+  issues: z.array(
+    z.object({
+      severity: z.enum(["low", "medium", "high"]).default("medium"),
+      target: z.string(),
+      problem: z.string(),
+    }),
+  ).default([]),
+});
+
 export const hookEditorSchema = z.object({
   titles: z.array(z.string()).min(5),
   loglines: z.array(z.string()).min(3),
@@ -158,3 +173,5 @@ export type HookEditorOutput = z.infer<typeof hookEditorSchema>;
 export type CharacterDesignerOutput = z.infer<typeof characterDesignerSchema>;
 export type PlotArchitectOutput = z.infer<typeof plotArchitectSchema>;
 export type ChiefEditorOutput = z.infer<typeof chiefEditorSchema>;
+export type StoryDirectionGenerationOutput = z.infer<typeof storyDirectionGenerationSchema>;
+export type DiscussionCriticOutput = z.infer<typeof discussionCriticSchema>;

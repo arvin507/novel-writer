@@ -8,6 +8,7 @@ const statements = [
     id TEXT NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
     genre TEXT NOT NULL,
+    storyDirectionCount INTEGER NOT NULL DEFAULT 3,
     keywords TEXT NOT NULL,
     targetWordCount INTEGER NOT NULL,
     targetPlatform TEXT NOT NULL DEFAULT 'zhihu_yanxuan',
@@ -15,6 +16,8 @@ const statements = [
     pov TEXT NOT NULL,
     endingPreference TEXT NOT NULL,
     emotionalTone TEXT NOT NULL,
+    genreStyleReference TEXT NOT NULL DEFAULT '',
+    languageStyleReference TEXT NOT NULL DEFAULT '',
     originalIdea TEXT NOT NULL,
     forbiddenItems TEXT NOT NULL DEFAULT '',
     currentStage TEXT NOT NULL DEFAULT 'idea',
@@ -269,6 +272,9 @@ async function main() {
   await ensureColumn("LLMSettings", "reasoningEffort", "TEXT NOT NULL DEFAULT 'high'");
   await ensureColumn("Project", "targetPlatform", "TEXT NOT NULL DEFAULT 'zhihu_yanxuan'");
   await ensureColumn("Project", "platformRequirementOverride", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn("Project", "storyDirectionCount", "INTEGER NOT NULL DEFAULT 3");
+  await ensureColumn("Project", "genreStyleReference", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn("Project", "languageStyleReference", "TEXT NOT NULL DEFAULT ''");
   console.log("SQLite tables are ready.");
 }
 

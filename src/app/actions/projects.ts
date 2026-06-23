@@ -10,6 +10,7 @@ import { countCjkWords, stringifyJson } from "@/lib/utils";
 const projectSchema = z.object({
   title: z.string().trim().optional().default(""),
   genre: z.string().trim().min(1, "故事类型必填"),
+  storyDirectionCount: z.coerce.number().int().min(1, "故事方向至少 1 个").max(4, "故事方向最多 4 个").default(3),
   keywords: z.string().default(""),
   targetWordCount: z.coerce.number().min(6000, "短篇目标字数至少 6000 字").default(8000),
   targetPlatform: z.preprocess(
@@ -20,6 +21,8 @@ const projectSchema = z.object({
   pov: z.string().trim().default("第一人称"),
   endingPreference: z.string().trim().default("反转后释然"),
   emotionalTone: z.string().trim().default("强冲突"),
+  genreStyleReference: z.string().trim().default(""),
+  languageStyleReference: z.string().trim().default(""),
   originalIdea: z.string().trim().min(1, "原始灵感必填：先写一句故事灵感。"),
   forbiddenItems: z.string().default(""),
 });
@@ -70,6 +73,7 @@ export async function createProjectAction(formData: FormData) {
     data: {
       title,
       genre: parsed.genre,
+      storyDirectionCount: parsed.storyDirectionCount,
       keywords: enrichedKeywords,
       targetWordCount: parsed.targetWordCount,
       targetPlatform: parsed.targetPlatform,
@@ -77,6 +81,8 @@ export async function createProjectAction(formData: FormData) {
       pov: parsed.pov,
       endingPreference: parsed.endingPreference,
       emotionalTone: parsed.emotionalTone,
+      genreStyleReference: parsed.genreStyleReference,
+      languageStyleReference: parsed.languageStyleReference,
       originalIdea: enrichedIdea,
       forbiddenItems: parsed.forbiddenItems,
     },
@@ -110,6 +116,7 @@ export async function updateProjectAction(formData: FormData) {
     data: {
       title: parsed.title || parsed.originalIdea.slice(0, 24),
       genre: parsed.genre,
+      storyDirectionCount: parsed.storyDirectionCount,
       keywords: parsed.keywords,
       targetWordCount: parsed.targetWordCount,
       targetPlatform: parsed.targetPlatform,
@@ -117,6 +124,8 @@ export async function updateProjectAction(formData: FormData) {
       pov: parsed.pov,
       endingPreference: parsed.endingPreference,
       emotionalTone: parsed.emotionalTone,
+      genreStyleReference: parsed.genreStyleReference,
+      languageStyleReference: parsed.languageStyleReference,
       originalIdea: parsed.originalIdea,
       forbiddenItems: parsed.forbiddenItems,
     },

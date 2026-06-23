@@ -51,8 +51,16 @@ export async function buildWritingContext(projectId: string, sceneCardId: string
       pov: project.pov,
       endingPreference: project.endingPreference,
       emotionalTone: project.emotionalTone,
+      genreStyleReference: project.genreStyleReference,
+      languageStyleReference: project.languageStyleReference,
       originalIdea: project.originalIdea,
       forbiddenItems: project.forbiddenItems,
+    },
+    styleReference: {
+      genreStyleReference: project.genreStyleReference,
+      languageStyleReference: project.languageStyleReference,
+      instruction:
+        "把参考类型风格落实到戏剧推进、冲突组织和爽点/悬念兑现方式；把参考语言风格落实到句子呼吸、对白温度、叙述锋利度和留白。",
     },
     platformInstruction: buildPlatformInstruction(project),
     selectedStoryDirection: selectedDirection

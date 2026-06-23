@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/db/prisma";
 import { parseJsonFromModel } from "@/lib/json";
 import { buildPlatformInstruction } from "@/lib/platforms";
-import { stringifyJson } from "@/lib/utils";
+import { stringifyJson, truncateText } from "@/lib/utils";
 import { callChatCompletion, type ChatMessage, type LLMConfig } from "./llmClient";
 
 export type RunAgentInput<TSchema extends z.ZodTypeAny> = {
@@ -39,6 +39,21 @@ export async function runAgent<TSchema extends z.ZodTypeAny>({
     let rawOutput = "";
     let model: string | undefined;
     let tokenUsage: unknown;
+    const agentRun = await prisma.agentRun.create({
+      data: {
+        projectId,
+        workflowType,
+        agentName,
+        inputJson: compactAgentInput({ attempt, messages }),
+        status: "running",
+      },
+    });
+
+    console.info(
+      `[agent:${workflowType}] ${agentName} attempt ${attempt} started${
+        projectId ? ` project=${projectId}` : ""
+      }`,
+    );
 
     try {
       const result = await callChatCompletion(messages, llmOverrides);
@@ -48,14 +63,11 @@ export async function runAgent<TSchema extends z.ZodTypeAny>({
       const parsed = parseJsonFromModel(rawOutput);
       const validated = schema.parse(parsed);
 
-      await prisma.agentRun.create({
+      await prisma.agentRun.update({
+        where: { id: agentRun.id },
         data: {
-          projectId,
-          workflowType,
-          agentName,
-          inputJson: stringifyJson({ attempt, messages }),
           outputJson: stringifyJson(validated),
-          rawOutput,
+          rawOutput: compactRawOutput(rawOutput),
           status: "success",
           model,
           durationMs: Date.now() - startedAt,
@@ -66,14 +78,11 @@ export async function runAgent<TSchema extends z.ZodTypeAny>({
       return validated;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
-      await prisma.agentRun.create({
+      await prisma.agentRun.update({
+        where: { id: agentRun.id },
         data: {
-          projectId,
-          workflowType,
-          agentName,
-          inputJson: stringifyJson({ attempt, messages }),
           outputJson: undefined,
-          rawOutput,
+          rawOutput: compactRawOutput(rawOutput),
           status: "failed",
           error: lastError,
           model,
@@ -100,6 +109,22 @@ export async function runAgent<TSchema extends z.ZodTypeAny>({
   }
 
   throw new Error(`${agentName} 输出解析失败：${lastError}`);
+}
+
+function compactAgentInput(input: { attempt: number; messages: ChatMessage[] }) {
+  return stringifyJson({
+    attempt: input.attempt,
+    messages: input.messages.map((message) => ({
+      role: message.role,
+      content: truncateText(message.content, 3000),
+      originalLength: message.content.length,
+    })),
+  });
+}
+
+function compactRawOutput(rawOutput: string) {
+  if (!rawOutput) return rawOutput;
+  return truncateText(rawOutput, 12000);
 }
 
 async function getProjectPlatformInstruction(projectId?: string) {

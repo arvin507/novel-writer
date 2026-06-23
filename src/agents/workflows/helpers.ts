@@ -15,6 +15,7 @@ export function projectBrief(project: Awaited<ReturnType<typeof getProjectOrThro
   return stringifyJson({
     title: project.title,
     genre: project.genre,
+    storyDirectionCount: project.storyDirectionCount,
     keywords: project.keywords,
     targetWordCount: project.targetWordCount,
     targetPlatform: platformProfile.label,
@@ -23,6 +24,8 @@ export function projectBrief(project: Awaited<ReturnType<typeof getProjectOrThro
     pov: project.pov,
     endingPreference: project.endingPreference,
     emotionalTone: project.emotionalTone,
+    genreStyleReference: project.genreStyleReference,
+    languageStyleReference: project.languageStyleReference,
     originalIdea: project.originalIdea,
     forbiddenItems: project.forbiddenItems,
     currentStage: project.currentStage,

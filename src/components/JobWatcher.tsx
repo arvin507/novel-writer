@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, RotateCw, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { retryWorkflowAction } from "@/app/actions/workflows";
@@ -33,17 +33,19 @@ export function JobWatcher({
   projectId,
   tab,
   focusSceneId,
+  initialJob,
 }: {
   jobId?: string;
   projectId: string;
   tab: string;
   focusSceneId?: string;
+  initialJob?: JobState;
 }) {
   const router = useRouter();
-  const [job, setJob] = useState<JobState | null>(null);
+  const [job, setJob] = useState<JobState | null>(initialJob ?? null);
   const [isStaleRunning, setIsStaleRunning] = useState(false);
   const [manualRefreshJobId, setManualRefreshJobId] = useState<string | null>(null);
-  const hasEditedRef = useRef(false);
+  const [pollError, setPollError] = useState<{ jobId: string; message: string } | null>(null);
   const needsManualRefresh = manualRefreshJobId === jobId;
 
   const refreshResults = useCallback(() => {
@@ -55,51 +57,35 @@ export function JobWatcher({
 
   useEffect(() => {
     if (!jobId) return;
-
-    hasEditedRef.current = false;
-
-    function markEdited(event: Event) {
-      const target = event.target;
-      if (target instanceof HTMLInputElement && target.type === "hidden") return;
-      if (isEditableElement(target)) {
-        hasEditedRef.current = true;
-      }
-    }
-
-    document.addEventListener("input", markEdited, true);
-    document.addEventListener("change", markEdited, true);
-    return () => {
-      document.removeEventListener("input", markEdited, true);
-      document.removeEventListener("change", markEdited, true);
-    };
-  }, [jobId]);
-
-  useEffect(() => {
-    if (!jobId) return;
     const currentJobId = jobId;
     let stopped = false;
 
     async function tick() {
-      const response = await fetch(`/api/jobs/${currentJobId}`, { cache: "no-store" });
-      if (!response.ok || stopped) return;
-      const nextJob = (await response.json()) as JobState;
-      setJob(nextJob);
-      setIsStaleRunning(
-        nextJob.status === "running" &&
-          Boolean(nextJob.startedAt) &&
-          Date.now() - new Date(nextJob.startedAt as string).getTime() > 5 * 60 * 1000,
-      );
-      if (nextJob.status === "success" || nextJob.status === "failed") {
-        stopped = true;
-        clearInterval(timer);
+      try {
+        const response = await fetch(`/api/jobs/${currentJobId}`, { cache: "no-store" });
+        if (stopped) return;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        if (sessionStorage.getItem(refreshedJobKey(currentJobId)) === "true") return;
-        if (hasEditedRef.current || isEditingNow()) {
+        const nextJob = (await response.json()) as JobState;
+        setJob(nextJob);
+        setPollError(null);
+        setIsStaleRunning(
+          nextJob.status === "running" &&
+            Boolean(nextJob.startedAt) &&
+            Date.now() - new Date(nextJob.startedAt as string).getTime() > 5 * 60 * 1000,
+        );
+        if (nextJob.status === "success" || nextJob.status === "failed") {
+          stopped = true;
+          clearInterval(timer);
+
+          if (nextJob.status !== "success") return;
+          if (sessionStorage.getItem(refreshedJobKey(currentJobId)) === "true") return;
           setManualRefreshJobId(currentJobId);
-          return;
         }
-
-        refreshResults();
+      } catch (error) {
+        if (stopped) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setPollError({ jobId: currentJobId, message: `任务状态刷新失败：${message}` });
       }
     }
 
@@ -109,15 +95,17 @@ export function JobWatcher({
       stopped = true;
       clearInterval(timer);
     };
-  }, [jobId, refreshResults]);
+  }, [jobId, initialJob, refreshResults]);
 
   if (!jobId) return null;
 
-  const displayRuns = compactRuns(job?.latestRuns ?? []);
-  const status = job?.status ?? "loading";
+  const displayedJob = job?.id === jobId ? job : initialJob ?? null;
+  const displayedPollError = pollError?.jobId === jobId ? pollError.message : "";
+  const displayRuns = compactRuns(displayedJob?.latestRuns ?? []);
+  const status = displayedJob?.status ?? "loading";
   const isSuccess = status === "success";
   const isFailed = status === "failed";
-  const meta = job?.type ? workflowMeta[job.type as LocalJobType] : undefined;
+  const meta = displayedJob?.type ? workflowMeta[displayedJob.type as LocalJobType] : undefined;
   const statusText =
     status === "success"
       ? "已完成"
@@ -148,7 +136,7 @@ export function JobWatcher({
             <XCircle className="h-4 w-4" />
           )}
           <span className="font-medium">
-            {meta?.label ?? job?.type ?? "任务"}：{statusText}
+          {meta?.label ?? displayedJob?.type ?? "任务"}：{statusText}
           </span>
           {meta ? <span className="text-xs opacity-80">({meta.scope})</span> : null}
         </div>
@@ -164,13 +152,16 @@ export function JobWatcher({
           </form>
         ) : null}
         {needsManualRefresh ? (
-          <button
-            type="button"
-            onClick={refreshResults}
-            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
-          >
-            刷新任务结果
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs opacity-80">任务已结束。为避免打断编辑，不会自动刷新页面。</span>
+            <button
+              type="button"
+              onClick={refreshResults}
+              className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+            >
+              手动刷新结果
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -179,14 +170,15 @@ export function JobWatcher({
           {displayRuns.map((run) => (
             <div key={run.agentName} className="flex flex-wrap gap-2">
               <span className="font-medium">{run.agentName}</span>
-              <span>{run.status === "success" ? "完成" : run.status === "failed" ? "失败" : run.status}</span>
-              {run.durationMs ? <span>{Math.round(run.durationMs / 1000)} 秒</span> : null}
+              <span>{readableRunStatus(run.status)}</span>
+              <span>{formatRunDuration(run)}</span>
               {run.error ? <span className="text-rose-700">{run.error}</span> : null}
             </div>
           ))}
         </div>
       ) : null}
-      {job?.error ? <p className="mt-2 text-rose-700">{job.error}</p> : null}
+      {displayedPollError ? <p className="mt-2 text-amber-800">{displayedPollError}</p> : null}
+      {displayedJob?.error ? <p className="mt-2 text-rose-700">{displayedJob.error}</p> : null}
     </div>
   );
 }
@@ -195,23 +187,24 @@ function refreshedJobKey(jobId: string) {
   return `novel-writer:job-refreshed:${jobId}`;
 }
 
-function isEditingNow() {
-  return isEditableElement(document.activeElement);
-}
-
-function isEditableElement(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-  if (target instanceof HTMLInputElement) {
-    return target.type !== "button" && target.type !== "submit" && target.type !== "reset" && target.type !== "hidden";
-  }
-  return target.isContentEditable;
-}
-
 function compactRuns(runs: AgentRunState[]) {
   const byAgent = new Map<string, AgentRunState>();
   for (const run of runs) {
     byAgent.set(run.agentName, run);
   }
   return Array.from(byAgent.values());
+}
+
+function readableRunStatus(status: string) {
+  if (status === "success") return "完成";
+  if (status === "failed") return "失败";
+  if (status === "running") return "请求中";
+  return status;
+}
+
+function formatRunDuration(run: AgentRunState) {
+  const durationMs =
+    run.durationMs ?? (run.status === "running" ? Date.now() - new Date(run.createdAt).getTime() : 0);
+  if (!durationMs || durationMs < 0) return "刚开始";
+  return `${Math.max(1, Math.round(durationMs / 1000))} 秒`;
 }

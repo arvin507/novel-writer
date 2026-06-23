@@ -158,16 +158,29 @@ export async function polishFinalDraft(projectId: string) {
 }
 
 async function buildReviewGuidance(projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      genreStyleReference: true,
+      languageStyleReference: true,
+    },
+  });
   const reviewReport = await prisma.reviewReport.findFirst({
     where: { projectId, workflowType: "review_draft" },
     orderBy: { createdAt: "desc" },
   });
+
+  const styleReference = {
+    genreStyleReference: project?.genreStyleReference ?? "",
+    languageStyleReference: project?.languageStyleReference ?? "",
+  };
 
   if (reviewReport) {
     const details = safeJsonParse<ReviewDetails>(reviewReport.detailsJson, {});
     const chief = details.chiefOutput ?? details.review?.chief;
     return truncateText(
       stringifyJson({
+        styleReference,
         reportSummary: reviewReport.summary,
         chiefSummary: chief?.summary,
         overallScore: chief?.overallScore,
@@ -196,6 +209,7 @@ async function buildReviewGuidance(projectId: string) {
   if (chief.summary || chief.rewriteInstructions?.length || chief.coreProblems?.length) {
     return truncateText(
       stringifyJson({
+        styleReference,
         chiefSummary: chief.summary,
         overallScore: chief.overallScore,
         coreProblems: chief.coreProblems?.slice(0, 6) ?? [],
@@ -208,7 +222,10 @@ async function buildReviewGuidance(projectId: string) {
     );
   }
 
-  return "暂无全文审稿报告；只做语言、节奏、代入感和可读性层面的最终润色，不新增剧情事实。";
+  return stringifyJson({
+    styleReference,
+    instruction: "暂无全文审稿报告；只做语言、节奏、代入感和可读性层面的最终润色，不新增剧情事实。",
+  });
 }
 
 function buildPolishPrompt(input: {
@@ -229,6 +246,9 @@ function buildPolishPrompt(input: {
 - 不改变剧情事实、人物关系、线索、视角、结局和场景顺序。
 - 可以调整句式、节奏、过渡、情绪递进、错别字、病句和少量重复表达。
 - 如果审稿意见与当前文本块无关，以当前文本块的原剧情为准。
+- 少做总结，少做解释，少写漂亮空话；优先把抽象表达压回到动作、对白、卡顿和现场感。
+- 如果原文已经有攻击性、狼狈感、羞耻感或压迫感，保留它，不要润成温吞的标准书面语。
+- 不要为了“顺”而抹平人物的脾气，也不要把所有句子都修成一个节奏。
 
 全文审稿意见：
 ${input.reviewGuidance}

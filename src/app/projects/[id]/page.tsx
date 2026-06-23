@@ -89,8 +89,22 @@ async function getProject(id: string) {
         orderBy: { createdAt: "asc" },
         include: { versions: { orderBy: { createdAt: "desc" } }, sceneCard: true },
       },
-      agentRuns: { orderBy: { createdAt: "desc" }, take: 60 },
       reviewReports: { orderBy: { createdAt: "desc" }, take: 20 },
+      // Keep full Agent output off the main detail query; long drafts make these rows large.
+      agentRuns: {
+        orderBy: { createdAt: "desc" },
+        take: 60,
+        select: {
+          id: true,
+          projectId: true,
+          workflowType: true,
+          agentName: true,
+          status: true,
+          error: true,
+          durationMs: true,
+          createdAt: true,
+        },
+      },
       storyBible: true,
       foreshadowings: true,
       twists: true,
@@ -142,6 +156,37 @@ export default async function ProjectPage({
   const latestJob = project.localJobs[0];
   const fallbackJobId = latestJob && latestJob.status !== "success" ? latestJob.id : undefined;
   const watchedJobId = query.jobId ?? fallbackJobId;
+  const initialWatchedJob = watchedJobId
+    ? project.localJobs.find((job) => job.id === watchedJobId)
+    : undefined;
+  const initialWatchedRuns = initialWatchedJob
+    ? project.agentRuns
+        .filter(
+          (run) =>
+            run.workflowType === initialWatchedJob.type &&
+            run.createdAt.getTime() >= initialWatchedJob.createdAt.getTime(),
+        )
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+        .map((run) => ({
+          agentName: run.agentName,
+          status: run.status,
+          error: run.error,
+          durationMs: run.durationMs,
+          createdAt: run.createdAt.toISOString(),
+        }))
+    : [];
+  const initialJobState = initialWatchedJob
+    ? {
+        id: initialWatchedJob.id,
+        projectId: initialWatchedJob.projectId,
+        type: initialWatchedJob.type,
+        status: initialWatchedJob.status,
+        error: initialWatchedJob.error,
+        attempts: initialWatchedJob.attempts,
+        startedAt: initialWatchedJob.startedAt?.toISOString() ?? null,
+        latestRuns: initialWatchedRuns,
+      }
+    : undefined;
   const totalWords = project.draftSegments.reduce((sum, item) => sum + item.wordCount, 0);
   const platformProfile = getPlatformProfile(project.targetPlatform);
   const writtenScenes = project.sceneCards.filter((scene) =>
@@ -213,7 +258,13 @@ export default async function ProjectPage({
         </div>
       ) : null}
 
-      <JobWatcher jobId={watchedJobId} projectId={project.id} tab={activeTab} focusSceneId={query.sceneId} />
+      <JobWatcher
+        jobId={watchedJobId}
+        projectId={project.id}
+        tab={activeTab}
+        focusSceneId={query.sceneId}
+        initialJob={initialJobState}
+      />
 
       {activeTab === "overview" ? <Overview project={project} totalWords={totalWords} /> : null}
       {activeTab === "directions" ? <Directions project={project} selectedDirectionId={query.directionId} /> : null}
@@ -500,13 +551,11 @@ function latestChiefFromReports(project: ProjectDetail, workflowTypes: string[])
 }
 
 function Overview({ project, totalWords }: { project: ProjectDetail; totalWords: number }) {
-  const latestChief = project.agentRuns.find(
-    (run) => run.agentName === "ChiefEditorAgent" && run.status === "success",
-  );
-  const chiefOutput = safeJsonParse<{ summary?: string; overallScore?: number; nextAction?: string }>(
-    latestChief?.outputJson,
-    {},
-  );
+  const latestReport = project.reviewReports.find((report) => safeJsonParse<{
+    chiefOutput?: { summary?: string };
+  }>(report.detailsJson, {}).chiefOutput?.summary);
+  const chiefOutput = safeJsonParse<{ chiefOutput?: ChiefDecision }>(latestReport?.detailsJson, {})
+    .chiefOutput ?? {};
   const chiefAction = readableChiefAction(chiefOutput.nextAction);
   const platformProfile = getPlatformProfile(project.targetPlatform);
 
@@ -517,13 +566,13 @@ function Overview({ project, totalWords }: { project: ProjectDetail; totalWords:
           <h2 className="font-semibold">当前主编结论</h2>
         </CardHeader>
         <CardContent>
-          {latestChief ? (
+          {latestReport ? (
             <div className="grid gap-3 text-sm leading-6">
               <p>{chiefOutput.summary ?? "暂无摘要"}</p>
               <div className="flex flex-wrap gap-2">
                 <Badge>评分：{chiefOutput.overallScore ?? "-"}</Badge>
                 <Badge className={chiefAction.tone}>主编判断：{chiefAction.label}</Badge>
-                <Badge>时间：{formatDate(latestChief.createdAt)}</Badge>
+                <Badge>时间：{formatDate(latestReport.createdAt)}</Badge>
               </div>
               {chiefAction.hint ? <p className="text-zinc-600">{chiefAction.hint}</p> : null}
             </div>
@@ -585,7 +634,7 @@ function Directions({
         <div>
           <h2 className="text-lg font-semibold">故事方向</h2>
           <p className="mt-1 text-sm text-zinc-600">
-            {project.storyDirections.length} 个方向，{project.storyDirections.find((direction) => direction.selected)?.title ?? "尚未选择"}
+            目标 {project.storyDirectionCount ?? 3} 个，当前 {project.storyDirections.length} 个，{project.storyDirections.find((direction) => direction.selected)?.title ?? "尚未选择"}
           </p>
         </div>
         <WorkflowButton projectId={project.id} type="generate_story_directions" tab="directions">
@@ -1494,18 +1543,9 @@ function SegmentChiefPanel({
 }
 
 function Reviews({ project }: { project: ProjectDetail }) {
-  const chiefRuns = project.agentRuns.filter((run) => run.agentName === "ChiefEditorAgent");
-  const latestChief = chiefRuns[0];
-  const chief = safeJsonParse<{
-    overallScore?: number;
-    summary?: string;
-    coreProblems?: string[];
-    acceptedSuggestions?: string[];
-    rejectedSuggestions?: string[];
-    rewriteInstructions?: string[];
-    nextAction?: string;
-  }>(latestChief?.outputJson, {});
-  const latestReport = project.reviewReports[0];
+  const latestReport = project.reviewReports.find((report) => report.workflowType === "review_draft");
+  const chief = safeJsonParse<{ chiefOutput?: ChiefDecision }>(latestReport?.detailsJson, {})
+    .chiefOutput ?? {};
   const scoreObject = safeJsonParse<Record<string, unknown>>(latestReport?.scoresJson, {});
   const hints = scoreHints(scoreObject as never);
   const latestPolishReport = project.reviewReports.find(
@@ -1535,7 +1575,7 @@ function Reviews({ project }: { project: ProjectDetail }) {
       <Card>
         <CardHeader><h3 className="font-semibold">主编结论</h3></CardHeader>
         <CardContent className="grid gap-3 text-sm leading-6">
-          {latestChief ? (
+          {chief.summary ? (
             <>
               <p>{chief.summary}</p>
               <div className="flex flex-wrap gap-2">
@@ -1578,15 +1618,15 @@ function Reviews({ project }: { project: ProjectDetail }) {
         <CardHeader><h3 className="font-semibold">Agent 运行日志</h3></CardHeader>
         <CardContent className="grid gap-2">
           {project.agentRuns.map((run) => (
-            <details key={run.id} className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
-              <summary className="cursor-pointer font-medium">
-                {run.agentName} / {run.workflowType} / {run.status} / {formatDate(run.createdAt)}
-              </summary>
+            <div key={run.id} className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+              <div className="font-medium">
+                {run.agentName} / {run.workflowType} / {readableAgentRunStatus(run.status)} / {formatDate(run.createdAt)}
+              </div>
+              {run.durationMs ? (
+                <p className="mt-1 text-xs text-zinc-600">耗时：{Math.round(run.durationMs / 1000)} 秒</p>
+              ) : null}
               {run.error ? <p className="mt-2 text-rose-700">{run.error}</p> : null}
-              <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded bg-white p-3 text-xs leading-5">
-                {run.outputJson || run.rawOutput || "无输出"}
-              </pre>
-            </details>
+            </div>
           ))}
         </CardContent>
       </Card>
@@ -1717,6 +1757,19 @@ function ProjectSettings({ project }: { project: ProjectDetail }) {
             <TwoCols>
               <Field label="标题"><Input name="title" defaultValue={project.title} /></Field>
               <Field label="类型"><Input name="genre" defaultValue={project.genre} /></Field>
+              <Field label="故事方向数量">
+                <select
+                  name="storyDirectionCount"
+                  className={selectClassName}
+                  defaultValue={String(project.storyDirectionCount ?? 3)}
+                >
+                  {[1, 2, 3, 4].map((option) => (
+                    <option key={option} value={option}>
+                      {option} 个
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="关键词"><Input name="keywords" defaultValue={project.keywords} /></Field>
               <Field label="目标字数"><Input name="targetWordCount" type="number" defaultValue={project.targetWordCount} /></Field>
               <Field label="目标平台">
@@ -1735,6 +1788,20 @@ function ProjectSettings({ project }: { project: ProjectDetail }) {
               <Field label="叙事视角"><Input name="pov" defaultValue={project.pov} /></Field>
               <Field label="结局倾向"><Input name="endingPreference" defaultValue={project.endingPreference} /></Field>
               <Field label="情绪基调"><Input name="emotionalTone" defaultValue={project.emotionalTone} /></Field>
+              <Field label="参考类型风格">
+                <Input
+                  name="genreStyleReference"
+                  defaultValue={project.genreStyleReference}
+                  placeholder="例如：强钩子悬疑短篇，线索前置，结尾清算。"
+                />
+              </Field>
+              <Field label="参考语言风格">
+                <Input
+                  name="languageStyleReference"
+                  defaultValue={project.languageStyleReference}
+                  placeholder="例如：口语化、有火气、少总结、多现场感。"
+                />
+              </Field>
             </TwoCols>
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-950">
               <div className="font-medium">{platformProfile.label}</div>
@@ -1783,6 +1850,14 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="min-w-0">{value}</span>
     </div>
   );
+}
+
+function readableAgentRunStatus(status: string) {
+  if (status === "success") return "完成";
+  if (status === "failed") return "失败";
+  if (status === "running") return "请求中";
+  if (status === "pending") return "排队中";
+  return status;
 }
 
 function MiniRow({ label, value }: { label: string; value: React.ReactNode }) {

@@ -224,7 +224,7 @@ async function postJson(endpoint: string, config: LLMConfig, payload: unknown) {
           "AI 网关超时：供应商在模型返回前断开了请求。请降低 Max Tokens，或稍后重试。",
         );
       }
-      throw new Error(`AI 请求失败：HTTP ${response.status} ${rawText.slice(0, 500)}`);
+      throw new Error(formatHttpError(response.status, rawText, endpoint));
     }
 
     return raw;
@@ -277,7 +277,7 @@ async function postResponsesStream(
           "AI 网关超时：供应商在模型返回前断开了请求。请降低推理强度或 Max Tokens，或稍后重试。",
         );
       }
-      throw new Error(`AI 请求失败：HTTP ${response.status} ${rawText.slice(0, 500)}`);
+      throw new Error(formatHttpError(response.status, rawText, endpoint));
     }
 
     if (!response.body) {
@@ -393,6 +393,46 @@ function buildEndpoint(baseUrl: string, path: "chat/completions" | "responses") 
   return normalizedBaseUrl.endsWith("/v1")
     ? `${normalizedBaseUrl}/${path}`
     : `${normalizedBaseUrl}/v1/${path}`;
+}
+
+function formatHttpError(status: number, rawText: string, endpoint: string) {
+  const endpointLabel = formatEndpoint(endpoint);
+  const htmlTitle = extractHtmlTitle(rawText);
+  const textSummary =
+    htmlTitle ||
+    rawText
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 300);
+
+  if (status === 502) {
+    return [
+      `AI 网关返回 502 Bad Gateway：${endpointLabel}`,
+      "上游服务不可用、接口路径不支持，或模型暂时不可用。",
+      textSummary ? `网关信息：${textSummary}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return [`AI 请求失败：HTTP ${status} ${endpointLabel}`, textSummary].filter(Boolean).join(" ");
+}
+
+function extractHtmlTitle(rawText: string) {
+  const titleStart = rawText.toLowerCase().indexOf("<title>");
+  const titleEnd = rawText.toLowerCase().indexOf("</title>", titleStart);
+  if (titleStart === -1 || titleEnd === -1) return "";
+  return rawText.slice(titleStart + "<title>".length, titleEnd).replace(/\s+/g, " ").trim();
+}
+
+function formatEndpoint(endpoint: string) {
+  try {
+    const url = new URL(endpoint);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return endpoint;
+  }
 }
 
 function splitResponsesInput(messages: ChatMessage[]) {

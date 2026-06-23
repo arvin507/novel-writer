@@ -23,7 +23,7 @@ export default async function SettingsPage({
         <div>
           <h1 className="text-2xl font-semibold text-zinc-950">本地 AI 设置</h1>
           <p className="mt-2 text-sm text-zinc-600">
-            配置第三方 OpenAI-compatible Chat Completions。API Key 只保存在本地 SQLite。
+            配置第三方 OpenAI-compatible 接口。API Key 只保存在本地 SQLite。
           </p>
         </div>
         <Badge>Key：{maskedKey}</Badge>
@@ -53,8 +53,8 @@ export default async function SettingsPage({
                   className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm"
                   defaultValue={settings?.apiMode ?? "chat_completions"}
                 >
-                  <option value="chat_completions">Chat Completions /v1/chat/completions</option>
-                  <option value="responses">Responses /v1/responses</option>
+                  <option value="chat_completions">Chat Completions</option>
+                  <option value="responses">Responses</option>
                 </select>
               </Field>
               <Field label="推理强度">
@@ -82,7 +82,7 @@ export default async function SettingsPage({
             <Field label="Base URL">
               <Input
                 name="baseUrl"
-                placeholder="https://example.com"
+                placeholder="https://example.com 或 https://example.com/responses"
                 defaultValue={settings?.baseUrl ?? process.env.OPENAI_COMPATIBLE_BASE_URL ?? ""}
               />
             </Field>

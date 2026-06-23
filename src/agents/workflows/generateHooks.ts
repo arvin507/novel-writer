@@ -4,11 +4,21 @@ import { runAgent } from "../orchestrator";
 import {
   ChiefEditorAgentPrompt,
   EmotionEditorAgentPrompt,
+  HookCriticAgentPrompt,
   HookEditorAgentPrompt,
+  HookIntegratorAgentPrompt,
   ReaderRepresentativeAgentPrompt,
 } from "../prompts";
-import { chiefEditorSchema, criticSchema, hookEditorSchema, readerSchema } from "../schemas";
+import {
+  chiefEditorSchema,
+  criticSchema,
+  discussionCriticSchema,
+  hookEditorSchema,
+  readerSchema,
+} from "../schemas";
 import { getProjectOrThrow, projectBrief, saveReviewReport } from "./helpers";
+
+const MAX_HOOK_DISCUSSION_ROUNDS = 3;
 
 export async function generateHooks(projectId: string) {
   const workflowType = "generate_hooks";
@@ -18,7 +28,7 @@ export async function generateHooks(projectId: string) {
       (await prisma.storyDirection.findUnique({ where: { id: project.selectedDirectionId } }))) ||
     (await prisma.storyDirection.findFirst({ where: { projectId }, orderBy: { createdAt: "asc" } }));
 
-  const hookOutput = await runAgent({
+  let hookOutput = await runAgent({
     projectId,
     workflowType,
     agentName: "HookEditorAgent",
@@ -26,6 +36,38 @@ export async function generateHooks(projectId: string) {
     userPrompt: `请为以下项目和故事方向生成标题钩子包。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}`,
     schema: hookEditorSchema,
   });
+  const discussionRounds: Array<Record<string, unknown>> = [
+    { round: 1, proposer: hookOutput },
+  ];
+
+  for (let round = 1; round <= MAX_HOOK_DISCUSSION_ROUNDS; round += 1) {
+    const hookCriticOutput = await runAgent({
+      projectId,
+      workflowType,
+      agentName: "HookCriticAgent",
+      systemPrompt: HookCriticAgentPrompt,
+      userPrompt: `请只找问题，不要给建议。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n当前标题钩子包：${stringifyJson(hookOutput)}`,
+      schema: discussionCriticSchema,
+    });
+    discussionRounds[discussionRounds.length - 1].critic = hookCriticOutput;
+
+    if (round === MAX_HOOK_DISCUSSION_ROUNDS || hookCriticOutput.issues.length === 0) {
+      break;
+    }
+
+    hookOutput = await runAgent({
+      projectId,
+      workflowType,
+      agentName: "HookIntegratorAgent",
+      systemPrompt: HookIntegratorAgentPrompt,
+      userPrompt: `请综合提案和批评意见，输出修订版标题钩子包。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n当前提案：${stringifyJson(hookOutput)}\n批评意见：${stringifyJson(hookCriticOutput)}`,
+      schema: hookEditorSchema,
+    });
+    discussionRounds.push({
+      round: round + 1,
+      proposer: hookOutput,
+    });
+  }
 
   const readerOutput = await runAgent({
     projectId,
@@ -86,7 +128,7 @@ export async function generateHooks(projectId: string) {
       emotion: emotionOutput.scores,
       chief: chiefOutput.overallScore,
     },
-    details: { readerOutput, emotionOutput, chiefOutput },
+    details: { discussionRounds, finalHookOutput: hookOutput, readerOutput, emotionOutput, chiefOutput },
   });
 
   return { hookPackage, chief: chiefOutput };

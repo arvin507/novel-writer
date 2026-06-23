@@ -6,16 +6,22 @@ import {
   ChiefEditorAgentPrompt,
   EmotionEditorAgentPrompt,
   LogicCriticAgentPrompt,
+  OutlineCriticAgentPrompt,
+  OutlineIntegratorAgentPrompt,
+  OutlineProposerAgentPrompt,
   PlotArchitectAgentPrompt,
 } from "../prompts";
 import {
   characterDesignerSchema,
   chiefEditorSchema,
   criticSchema,
+  discussionCriticSchema,
   plotArchitectSchema,
   type PlotArchitectOutput,
 } from "../schemas";
 import { compactErrorMessage, getProjectOrThrow, projectBrief, saveReviewReport } from "./helpers";
+
+const MAX_OUTLINE_DISCUSSION_ROUNDS = 3;
 
 type ChiefGuidance = {
   summary?: string;
@@ -61,15 +67,48 @@ export async function generateOutline(projectId: string) {
     data: { currentStage: "characters" },
   });
 
-  const plotOutput = await runAgent({
+  let plotOutput = await runAgent({
     projectId,
     workflowType,
-    agentName: "PlotArchitectAgent",
-    systemPrompt: PlotArchitectAgentPrompt,
-    userPrompt: `请生成短篇大纲、场景卡、伏笔表、反转表。为了避免网关超时，输出必须精简：sceneCards 控制在 8 到 10 个；每个字段只写 1 句；outline 控制在 8 条以内；foreshadowingMap 和 twistMap 各控制在 5 条以内。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n钩子包：${stringifyJson(hookPackage)}\n人物：${stringifyJson(characterOutput)}`,
+    agentName: "OutlineProposerAgent",
+    systemPrompt: OutlineProposerAgentPrompt,
+    userPrompt: `请先提出一版短篇大纲和场景卡。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n钩子包：${stringifyJson(hookPackage)}\n人物：${stringifyJson(characterOutput)}`,
     schema: plotArchitectSchema,
     llmOverrides: { maxTokens: 4500 },
   });
+  const discussionRounds: Array<Record<string, unknown>> = [
+    { round: 1, proposer: plotOutput },
+  ];
+
+  for (let round = 1; round <= MAX_OUTLINE_DISCUSSION_ROUNDS; round += 1) {
+    const outlineCriticOutput = await runAgent({
+      projectId,
+      workflowType,
+      agentName: "OutlineCriticAgent",
+      systemPrompt: OutlineCriticAgentPrompt,
+      userPrompt: `请只找问题，不要给建议。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n人物：${stringifyJson(characterOutput)}\n当前大纲与场景卡：${stringifyJson(plotOutput)}`,
+      schema: discussionCriticSchema,
+    });
+    discussionRounds[discussionRounds.length - 1].critic = outlineCriticOutput;
+
+    if (round === MAX_OUTLINE_DISCUSSION_ROUNDS || outlineCriticOutput.issues.length === 0) {
+      break;
+    }
+
+    plotOutput = await runAgent({
+      projectId,
+      workflowType,
+      agentName: "OutlineIntegratorAgent",
+      systemPrompt: OutlineIntegratorAgentPrompt,
+      userPrompt: `请综合提案和批评意见，输出修订版大纲和场景卡。\n项目：${projectBrief(project)}\n故事方向：${stringifyJson(direction)}\n钩子包：${stringifyJson(hookPackage)}\n人物：${stringifyJson(characterOutput)}\n当前提案：${stringifyJson(plotOutput)}\n批评意见：${stringifyJson(outlineCriticOutput)}`,
+      schema: plotArchitectSchema,
+      llmOverrides: { maxTokens: 4500 },
+    });
+    discussionRounds.push({
+      round: round + 1,
+      proposer: plotOutput,
+    });
+  }
 
   const outline = await savePlotArtifacts(projectId, plotOutput);
   await saveInitialStoryBible(projectId, characterOutput, plotOutput);
@@ -113,7 +152,7 @@ export async function generateOutline(projectId: string) {
         emotion: emotionOutput.scores,
         chief: chiefOutput.overallScore,
       },
-      details: { logicOutput, emotionOutput, chiefOutput },
+      details: { discussionRounds, characterOutput, plotOutput, logicOutput, emotionOutput, chiefOutput },
     });
 
     return { outline, chief: chiefOutput };
